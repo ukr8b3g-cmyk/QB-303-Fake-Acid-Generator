@@ -1,5 +1,6 @@
 # QB-303 · Fake Acid Generator
-<img width="1179" height="913" alt="{F964F339-248C-4E5D-8B4E-5398AA7FC1CB}" src="https://github.com/user-attachments/assets/ab2e6c36-b44b-486c-804d-42b2671dc729" />
+
+<img width="938" height="933" alt="{42B56CD6-807E-4DDF-9088-A11A5C027DA4}" src="https://github.com/user-attachments/assets/da854f6c-17a0-42af-8905-29da3d654355" />
 
 
 **A Tiny Browser Acid Toy with Squelchy Bass, Drums & Blinking LEDs**  
