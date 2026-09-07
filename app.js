@@ -109,6 +109,7 @@
     $('#speed-wander').setAttribute('aria-pressed', String(speedWander));
     if (!running) $('#live-bpm').textContent = `${state.bpm} BPM`;
     $('#bpm').value = state.bpm;
+    $('#bpm-slider').value = state.bpm;
     $('#volume').value = Math.round(state.volume * 100);
     $('#volume-value').value = Math.round(state.volume * 100);
     for (const [key] of knobs) {
@@ -310,6 +311,10 @@
   $('#bpm').addEventListener('change', e => {
     const value = Number(e.target.value);
     if (e.target.value.trim() && Number.isFinite(value)) state.bpm = Math.round(Q.clamp(value, 60, 180));
+    changed(); patternMessage(`テンポ ${state.bpm} BPM。`);
+  });
+  $('#bpm-slider').addEventListener('input', e => {
+    state.bpm = Math.round(Q.clamp(Number(e.target.value), 60, 180));
     changed(); patternMessage(`テンポ ${state.bpm} BPM。`);
   });
   for (const [id, difference] of [['slower', -1], ['faster', 1]]) $(`#${id}`).addEventListener('click', () => { state.bpm = Q.clamp(state.bpm + difference, 60, 180); changed(); patternMessage(`テンポ ${state.bpm} BPM。`); });

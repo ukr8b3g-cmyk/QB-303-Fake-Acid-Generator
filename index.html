@@ -27,7 +27,7 @@
       </header>
       <section class="transport" aria-label="再生と音量">
         <button id="play" class="play-button" aria-pressed="false"><span id="play-icon" aria-hidden="true">▶</span><span id="play-label">LET'S GO</span></button>
-        <div class="tempo"><label for="bpm">TEMPO <span>BPM</span></label><div class="tempo-number"><button id="slower" class="nudge" aria-label="テンポを下げる">−</button><input id="bpm" type="number" min="60" max="180" step="1" value="128" inputmode="numeric" aria-label="テンポ BPM"><button id="faster" class="nudge" aria-label="テンポを上げる">＋</button></div></div>
+        <div class="tempo"><label for="bpm">TEMPO <span>BPM</span></label><div class="tempo-number"><button id="slower" class="nudge" aria-label="テンポを下げる">−</button><input id="bpm" type="number" min="60" max="180" step="1" value="128" inputmode="numeric" aria-label="テンポ BPM"><button id="faster" class="nudge" aria-label="テンポを上げる">＋</button></div><input id="bpm-slider" type="range" min="60" max="180" step="1" value="128" aria-label="テンポスライダー BPM" title="左右にドラッグして60〜180 BPMを調整"></div>
         <div class="scope-display"><div class="scope-caption"><span><i id="beat-led" class="led"></i> LIVE NONSENSE</span><span id="step-counter">-- / 16</span></div><canvas id="scope" width="520" height="100" aria-label="音の波形"></canvas><span class="scope-idle" id="scope-idle">PRESS PLAY. GET WEIRD.</span></div>
         <div class="volume"><label for="volume">VOLUME <output id="volume-value">42</output></label><input id="volume" type="range" min="0" max="100" value="42"><span>まずは小さな音で。</span></div>
       </section>
