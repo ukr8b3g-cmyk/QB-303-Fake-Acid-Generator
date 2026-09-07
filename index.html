@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#dfff00">
+  <meta name="description" content="QB-303 — a tiny browser acid toy. Turn knobs, punch beats, make it squeal. No installation, no samples, no account.">
+  <title>QB-303 · Fake Acid Generator</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23dfff00'/%3E%3Cpath d='M12 38V22h12v20h12V22h16v16' fill='none' stroke='%231a1d19' stroke-width='7'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script src="engine.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <a class="brand" href="./index.html" aria-label="QB-303 home"><span class="brand-icon" aria-hidden="true">q</span> QUESTIONABLE<br> BASS MACHINES.</a>
+      <div class="edition">NO TALENT REQUIRED.<span>BROWSER TOY / VOL. 001</span></div>
+    </header>
+    <div class="intro"><p>TURN KNOBS. PUNCH BEATS. <strong>MAKE IT SQUEAL.</strong></p><span class="little-arrow" aria-hidden="true">↙</span></div>
+    <main class="machine" aria-label="QB-303 アシッド音遊び">
+      <span class="screw top-left" aria-hidden="true"></span><span class="screw top-right" aria-hidden="true"></span>
+      <span class="screw bottom-left" aria-hidden="true"></span><span class="screw bottom-right" aria-hidden="true"></span>
+      <header class="machine-header">
+        <div><div class="model-row"><h1>QB-303<span class="model-dot" aria-hidden="true">↯</span></h1><span class="version">V1.0</span></div><p class="subtitle">FAKE ACID GENERATOR</p></div>
+        <div class="fake-sticker" aria-label="100 percent fake, 100 percent fun">100% FAKE.<br><strong>100% FUN.</strong><span>NOT A SERIOUS INSTRUMENT</span></div>
+      </header>
+      <section class="transport" aria-label="再生と音量">
+        <button id="play" class="play-button" aria-pressed="false"><span id="play-icon" aria-hidden="true">▶</span><span id="play-label">LET'S GO</span></button>
+        <div class="tempo"><label for="bpm">TEMPO <span>BPM</span></label><div class="tempo-number"><button id="slower" class="nudge" aria-label="テンポを下げる">−</button><input id="bpm" type="number" min="60" max="180" step="1" value="128" inputmode="numeric" aria-label="テンポ BPM"><button id="faster" class="nudge" aria-label="テンポを上げる">＋</button></div></div>
+        <div class="scope-display"><div class="scope-caption"><span><i id="beat-led" class="led"></i> LIVE NONSENSE</span><span id="step-counter">-- / 16</span></div><canvas id="scope" width="520" height="100" aria-label="音の波形"></canvas><span class="scope-idle" id="scope-idle">PRESS PLAY. GET WEIRD.</span></div>
+        <div class="volume"><label for="volume">VOLUME <output id="volume-value">42</output></label><input id="volume" type="range" min="0" max="100" value="42"><span>まずは小さな音で。</span></div>
+      </section>
+      <section class="sound-section" aria-label="音色">
+        <div class="section-heading"><h2><span class="section-index">01</span> TWIST THE NOISE <small>回すと、ギュルギュル。</small></h2><div class="wave-switch" role="group" aria-label="波形"><button data-wave="sawtooth" aria-pressed="true">SAW <span aria-hidden="true">ϟ</span></button><button data-wave="square" aria-pressed="false">SQUARE <span aria-hidden="true">⊓</span></button></div></div>
+        <div class="knob-row" id="knobs"></div>
+      </section>
+      <div class="sequencer-deck">
+        <section class="bass-section" aria-label="ベースパターン">
+          <div class="section-heading"><h2><span class="section-index">02</span> LITTLE BASS, BIG MOUTH</h2><button class="track-toggle" data-track="bass" aria-pressed="true" aria-label="ベースの有効・無効"><i class="led track-led" data-hit="bass"></i> BASS</button></div>
+          <div id="bass-grid" class="bass-grid" role="group" aria-label="8ステップのベース"></div>
+          <div class="pattern-legend"><span><i class="legend-dot accent-dot"></i>ACCENT <i class="legend-slide">↗</i>SLIDE</span><span>パッドで音を ON / OFF</span></div>
+          <div class="groove-row"><span class="control-caption">SYNCOPATION<small>ベースのノリをずらす</small></span><div class="groove-switch" role="group" aria-label="シンコペーション"><button data-groove="straight" aria-pressed="true">STRAIGHT</button><button data-groove="bounce" aria-pressed="false">BOUNCE</button><button data-groove="weird" aria-pressed="false">WEIRD</button></div></div>
+        </section>
+        <section class="drum-section" aria-label="ドラム">
+          <div class="section-heading"><h2><span class="section-index">03</span> ADD SOME BOOTS & CATS</h2><span class="tiny-label">16 STEPS</span></div>
+          <div id="drum-grid" class="drum-grid"></div>
+          <div class="drum-presets" role="group" aria-label="ドラムのリズム"><button data-preset="four" aria-pressed="true">4 BEAT</button><button data-preset="eight" aria-pressed="false">8 BEAT</button><button data-preset="offbeat" aria-pressed="false">OFFBEAT</button><button data-preset="weird" aria-pressed="false">WEIRD</button></div>
+          <p class="drum-hint">名前でミュート。小さなマスでリズムを変更。</p>
+        </section>
+      </div>
+      <section class="action-deck" aria-label="遊ぶ・保存する">
+        <button id="random" class="action random"><span class="action-icon" aria-hidden="true">⚄</span><span>NEW RIFF<small>ベースをガチャ</small></span></button>
+        <button id="mutate" class="action mutate"><span class="action-icon" aria-hidden="true">↝</span><span>MUTATE<small>ちょっと変える</small></span></button>
+        <button id="acid" class="action acid"><span class="action-icon" aria-hidden="true">↗</span><span>MORE ACID<small>もっとギュルギュル</small></span></button>
+        <button id="calm" class="calm">CALM DOWN<small>音色を戻す</small></button>
+        <button id="save" class="save"><span aria-hidden="true">↓</span> SAVE WAV<small>今の設定で4小節</small></button>
+      </section>
+      <footer class="machine-footer"><span id="status" role="status" aria-live="polite">準備OK。LET'S GO で音が出ます。</span><button id="lights" class="lights-switch" aria-pressed="true"><span class="toggle-track" aria-hidden="true"></span> LEDs</button></footer>
+    </main>
+    <footer class="page-footer"><span>JUST A TOY. <strong>MAKE A LITTLE NOISE.</strong></span><span>SPACE 再生 / 停止 · ESC 停止 · ノブは上下ドラッグ</span><a href="https://github.com/ukr8b3g-cmyk/QB-303-Fake-Acid-Generator" target="_blank" rel="noopener noreferrer">SOURCE ↗</a></footer>
+    <details class="help"><summary>あそびかた / ABOUT THIS TOY</summary><p>LET'S GO → ノブを上下にドラッグ → NEW RIFF で別のベース。ノブは矢印キーでも操作でき、ダブルクリックで初期値に戻ります。音符の入力は不要です。</p><p>光は鳴っている音に連動します。点滅が気になるときは LEDs をオフにしてください。画面を離れると自動停止します。リズム・テンポ変更は次の小節から反映されます。</p><p>SAVE WAV は現在のパターンと音色を4小節の WAV に書き出します。ノブを回した演奏の録音ではありません。設定はこのブラウザに自動保存されます。</p><p>TB-303 の完全再現ではなく、アシッド風の音を楽しむ独立した玩具です。Roland とは関係ありません。インストール・アカウント・マイク・外部音声ファイルは不要です。</p></details>
+  </div>
+  <noscript>この音遊びには JavaScript が必要です。ブラウザの設定で有効にしてください。</noscript>
+</body>
+</html>
