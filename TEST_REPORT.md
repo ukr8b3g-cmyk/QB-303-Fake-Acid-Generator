@@ -41,3 +41,26 @@ python tests/browser_smoke.py
 ```
 
 Use `--browser-path /path/to/chromium` to select an existing installation. The test writes detailed results, screenshots and a demo WAV under `.test-output/` (excluded from Git).
+# AUTO JAM 追加検証（2026-09-07）
+
+ローカル作業場所: `D:\Codex\Projects\QB-303-Fake-Acid-Generator`。GitHub の main から取得し、変更前の追跡対象11ファイルを `D:\Codex\_snapshots\QB-303-Fake-Acid-Generator\20260907_234911` に保存。
+
+- `npm test`: 21件成功。追加した自動効果の決定性、全6種類の選択、値の範囲、元パターンの不変性、休符・音抜きを含む。
+- `npm run check`: 構文確認成功。
+- `tests/jam.browser.cjs`: 既存の同梱Node.js版PlaywrightとEdgeで検証。HOLD RIFF、GO MADの予約と1小節後の復帰、CALM DOWN、Escape、画面非表示時の停止、reduced-motionを確認。
+- 実際のOfflineAudioContextで全6効果を通常／全ミュートの計12ケース検証。非有限値なし、ピーク0.737以下、全ミュート時は無音、効果終了後のdetuneは0。
+- WAVダウンロード成功。320/375/390/768/1024/1440pxで横方向のはみ出しなし。390pxと1440pxの画像を目視確認。
+- 結果は `.test-output/jam-report.json`、画面は `.test-output/jam-390.png` / `jam-1440.png`。テスト用ブラウザは終了。バックエンド起動なし。
+
+参照MP3の試聴、スピーカーでの聴感評価、実機TB-303との比較は未実施。従来のPython版 `browser_smoke.py` はPython版Playwrightがないため今回未実行。アプリの実行時依存は追加していません。上記のV1初期検証とは別の追加検証です。
+
+## METAL / RUSH / COLOR POP 追加検証（2026-09-08）
+
+変更前スナップショット: `D:\Codex\_snapshots\QB-303-Fake-Acid-Generator\20260908_000039-pre-metal`（12ファイル）。前回の未コミット変更を保持。
+
+- Node単体テスト23件成功、engine.js / app.jsの構文確認成功。
+- Edge＋同梱Playwrightでブラウザ検証成功。全9効果×通常／ミュートの18音声ケース。新規3ケースは金属音だけを有効にし、独立して発音することを確認。
+- RUSHの加速（180 BPMから上限240 BPM）と180 BPMへの復帰、元BPM入力の維持、WILD SPEEDの変化、CALM DOWNで速度・金属・配色を戻す動作を確認。
+- COLOR POPの5配色、320〜1440pxの6画面幅で横はみ出しなし。ピンク配色の390px画面を目視確認。
+- 出力は既存の `.test-output/jam-report.json` とスクリーンショットを更新。音声の最大ピークは0.737以下、全ミュートは無音、非有限値・JSエラーなし。
+- テスト用ブラウザは終了。バックエンド・新しい依存関係の追加なし。聴感評価は未実施。コミット・プッシュ未実施。

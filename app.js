@@ -15,6 +15,15 @@
   let timer = null, frame = null, previewTimer = null, saveTimer = null;
   let tick = 0, nextTime = 0, bar = null;
   let visuals = [];
+  let autoJam = false, jamAmount = 0.65, holdRiff = false, madQueued = false, activeJam = null;
+  let speedWander = false, rushQueued = false, rushBar = -1, liveBpm = state.bpm, colorIndex = 0;
+  const colors = ['classic', 'hot-pink', 'ultraviolet', 'electric-blue', 'acid-lime'];
+  function colorPop() {
+    colorIndex = (colorIndex + 1) % colors.length;
+    $('.machine').dataset.color = colors[colorIndex];
+    $('#color-pop').setAttribute('aria-label', `COLOR POP 配色変更、現在 ${colors[colorIndex]}`);
+  }
+  let jamSeed = crypto.getRandomValues(new Uint32Array(1))[0];
   const pulses = new Map();
   const canvas = $('#scope'), brush = canvas.getContext('2d');
   const wave = new Float32Array(512);
@@ -93,6 +102,12 @@
   }
   const bassPads = $$('.bass-pad'), drumPads = $$('.drum-step');
   function syncView() {
+    $('#auto-jam').setAttribute('aria-pressed', String(autoJam));
+    $('#hold-riff').setAttribute('aria-pressed', String(holdRiff));
+    $('#chaos-value').value = Math.round(jamAmount * 100);
+    $('#metal').setAttribute('aria-pressed', String(state.metal));
+    $('#speed-wander').setAttribute('aria-pressed', String(speedWander));
+    if (!running) $('#live-bpm').textContent = `${state.bpm} BPM`;
     $('#bpm').value = state.bpm;
     $('#volume').value = Math.round(state.volume * 100);
     $('#volume-value').value = Math.round(state.volume * 100);
@@ -161,6 +176,10 @@
   function stop(message = '停止しました。設定はそのままです。') {
     ++startToken; starting = false; running = false; $('#play').disabled = false;
     clearInterval(timer); timer = null; visuals = [];
+    activeJam = null; madQueued = false;
+    rushQueued = false; rushBar = -1; liveBpm = state.bpm;
+    $('#live-bpm').textContent = `${state.bpm} BPM`;
+    $('#jam-now').textContent = autoJam ? 'READY TO JAM' : 'YOUR HANDS. YOUR NOISE.';
     if (engine) { const old = engine; old.fadeOut(); setTimeout(() => old.dispose(), 35); engine = null; }
     clearPreview(); clearLights();
     if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
@@ -172,11 +191,29 @@
     if (nextTime < ctx.currentTime - 0.15) { stop('処理が一時停止したため安全に停止しました。LET\'S GO で再開。'); return; }
     try {
       while (nextTime < ctx.currentTime + 0.10) {
-        if (tick % 16 === 0) bar = Q.clone(state);
-        const duration = 60 / bar.bpm / 4;
-        const event = Q.eventsAt(bar, tick);
+        if (tick % 16 === 0) {
+          jamSeed = (jamSeed + 0x9e3779b9) >>> 0;
+          if (rushQueued) { rushBar = 0; rushQueued = false; }
+          else if (rushBar >= 0) rushBar = rushBar < 3 ? rushBar + 1 : -1;
+          activeJam = autoJam || madQueued || rushBar >= 0 ? Q.jamPlan(jamSeed, jamAmount, madQueued, state.metal) : null;
+          if (rushBar >= 0 && !madQueued) activeJam = { ...activeJam, strength: 1, move: [state.metal ? 6 : 3, state.metal ? 7 : 2, 0, 5][rushBar] };
+          madQueued = false;
+          if (autoJam && !holdRiff && tick > 0) {
+            const rng = Q.random(jamSeed ^ 303);
+            if (rng() < 0.25 + jamAmount * 0.65) {
+              state.seed = (state.seed + 1) >>> 0;
+              const index = 1 + Math.floor(rng() * 7);
+              state.bass[index] = Q.newRiff(state.seed)[index];
+              syncView(); persist();
+            }
+          }
+          bar = Q.clone(state);
+          liveBpm = Q.performanceBpm(bar.bpm, jamSeed, speedWander, rushBar);
+        }
+        const duration = 60 / liveBpm / 4;
+        const event = Q.jamEvent({ ...bar, knobs: state.knobs, metal: state.metal }, tick, activeJam);
         engine.step(event, nextTime, duration, state);
-        visuals.push({ ...event, time: nextTime, cursor: Q.positions(bar.groove).findLastIndex(p => p <= event.step), enabled: { ...state.enabled }, slide: state.knobs.slide });
+        visuals.push({ ...event, bpm: liveBpm, pop: rushBar >= 0 && event.step === 0, jamLabel: (rushBar >= 0 ? `RUSH ${rushBar + 1}/4 · ` : '') + (activeJam ? Q.JAM_MOVES[activeJam.move] : state.metal ? 'CLANG CLANG' : 'YOUR HANDS. YOUR NOISE.'), time: nextTime, cursor: Q.positions(bar.groove).findLastIndex(p => p <= event.step), enabled: { ...state.enabled }, slide: state.knobs.slide });
         nextTime += duration; tick++;
       }
     } catch (_) { stop('音声処理を停止しました。LET\'S GO で再開してください。'); }
@@ -202,6 +239,9 @@
     const clock = heardTime();
     while (visuals.length && visuals[0].time <= clock) {
       const event = visuals.shift();
+      $('#jam-now').textContent = event.jamLabel;
+      $('#live-bpm').textContent = `${event.bpm} BPM`;
+      if (event.pop && rushBar >= 0 && state.lights && !motion.matches) colorPop();
       $('#step-counter').textContent = `${String(event.step + 1).padStart(2, '0')} / 16`;
       if (state.lights) {
         $$('.current').forEach(el => el.classList.remove('current'));
@@ -251,6 +291,22 @@
   }
 
   $('#play').addEventListener('click', () => running ? stop() : start());
+  $('#metal').addEventListener('click', () => { state.metal = !state.metal; changed(); say(state.metal ? 'METAL! カンカンを追加。AUTO JAM でシャカシャカやキュッキュッも。' : '金属音をオフ。'); });
+  $('#speed-wander').addEventListener('click', () => { speedWander = !speedWander; syncView(); patternMessage(speedWander ? 'WILD SPEED! 小節ごとに速さが変化。元のBPMはキープ。' : '次の小節で元の速さへ。'); });
+  $('#rush').addEventListener('click', () => { rushQueued = true; if (!running) start(); else say('次の小節から4小節のRUSH! 加速して、戻ります。'); });
+  $('#color-pop').addEventListener('click', colorPop);
+  $('#auto-jam').addEventListener('click', () => {
+    autoJam = !autoJam; syncView();
+    patternMessage(autoJam ? 'AUTO JAM! 小節ごとに遊び方が変わります。' : 'AUTO JAM をオフにしました。');
+    if (!running) $('#jam-now').textContent = autoJam ? "LET'S GO TO JAM" : 'YOUR HANDS. YOUR NOISE.';
+  });
+  $('#chaos').addEventListener('input', e => { jamAmount = Number(e.target.value) / 100; syncView(); });
+  $('#hold-riff').addEventListener('click', () => { holdRiff = !holdRiff; syncView(); say(holdRiff ? 'このリフをキープ。音の遊びは続きます。' : 'リフの自動変化を再開。'); });
+  $('#go-mad').addEventListener('click', () => {
+    madQueued = true;
+    if (!running) start();
+    else say('GO MAD! 次の小節でスクラッチを1小節。');
+  });
   $('#bpm').addEventListener('change', e => {
     const value = Number(e.target.value);
     if (e.target.value.trim() && Number.isFinite(value)) state.bpm = Math.round(Q.clamp(value, 60, 180));
@@ -273,7 +329,7 @@
     for (const [key, amount] of [['cutoff', 0.055], ['resonance', 0.075], ['bite', 0.09], ['slide', 0.09], ['drive', 0.065]]) state.knobs[key] = Math.min(1, state.knobs[key] + amount);
     changed(); say('MORE ACID! 音量設定はそのまま。戻すときは CALM DOWN。');
   });
-  $('#calm').addEventListener('click', () => { state.knobs = { ...Q.DEFAULT_KNOBS }; changed(); say('音色を初期値に戻しました。パターンと音量はそのまま。'); });
+  $('#calm').addEventListener('click', () => { autoJam = false; activeJam = null; madQueued = false; speedWander = false; rushQueued = false; rushBar = -1; liveBpm = bar?.bpm ?? state.bpm; state.metal = false; colorIndex = 0; $('.machine').dataset.color = colors[0]; $('#color-pop').setAttribute('aria-label', 'COLOR POP 配色変更、現在 classic'); state.knobs = { ...Q.DEFAULT_KNOBS }; changed(); say('自動変化・金属音・加速をオフ。音色と配色を戻しました。'); });
   $('#lights').addEventListener('click', () => { state.lights = !state.lights; changed(); drawScope(engine || previewEngine); });
   motion.addEventListener('change', e => { if (e.matches) { state.lights = false; changed(); } });
   $('#save').addEventListener('click', async () => {

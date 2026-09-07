@@ -29,7 +29,7 @@
     return {
       version: 1, bpm: 128, volume: 0.42, waveform: 'sawtooth', groove: 'straight', preset: 'four',
       knobs: { ...DEFAULT_KNOBS }, seed: 303, lights: true,
-      enabled: { bass: true, kick: true, hat: true, clap: true },
+      metal: false, enabled: { bass: true, kick: true, hat: true, clap: true, metal: true },
       bass: [36, 36, 43, 39, 36, 46, 43, 39].map((note, i) => ({ note, on: i !== 3, accent: i === 0 || i === 5, slide: i === 1 || i === 6 })),
       drums: drumPattern()
     };
@@ -45,6 +45,7 @@
     s.groove = GROOVES.includes(raw.groove) ? raw.groove : s.groove;
     s.preset = Object.hasOwn(PRESETS, raw.preset) || raw.preset === 'custom' ? raw.preset : s.preset;
     if (typeof raw.lights === 'boolean') s.lights = raw.lights;
+    if (typeof raw.metal === 'boolean') s.metal = raw.metal;
     for (const key of Object.keys(s.knobs)) s.knobs[key] = number(raw.knobs?.[key], s.knobs[key], 0, 1);
     for (const key of Object.keys(s.enabled)) if (typeof raw.enabled?.[key] === 'boolean') s.enabled[key] = raw.enabled[key];
     if (Array.isArray(raw.bass) && raw.bass.length === 8) s.bass = raw.bass.map((v, i) => ({
@@ -87,6 +88,43 @@
     return ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'][note % 12] + (Math.floor(note / 12) - 1);
   }
   const frequency = note => 440 * Math.pow(2, (note - 69) / 12);
+  const JAM_MOVES = ['SCRATCH!', 'WOBBLE', 'STUTTER', 'CLIMB', 'BREAK', 'ACID RUN', 'CLANG CLANG', 'SHAKA SHAKA', 'CHIRP CHIRP'];
+  function performanceBpm(base, seed, wander = false, rushBar = -1) {
+    const factor = rushBar >= 0 && rushBar < 4 ? [1.12, 1.28, 1.5, 1][rushBar] : wander ? [0.85, 1, 1.12, 1.25][Math.floor(random(seed)() * 4)] : 1;
+    return Math.round(clamp(base * factor, 60, 240));
+  }
+  // A bounded, seeded performance layer. Never changes the user's volume or mutes.
+  function jamPlan(seed, amount = 0.65, force = false, metal = false) {
+    const rng = random(seed);
+    const strength = Number.isFinite(amount) ? clamp(amount) : 0.65;
+    return { move: force ? 0 : Math.floor(rng() * (metal ? JAM_MOVES.length : 6)), strength: force ? 1 : strength,
+      direction: rng() < 0.5 ? -1 : 1, repeats: rng() < strength ? 4 : 2 };
+  }
+  function jamEvent(state, tick, plan) {
+    const event = eventsAt(state, tick);
+    const step = event.step;
+    if (state.metal) {
+      const move = plan?.move, strength = plan?.strength ?? 0.55;
+      // Independent percussion; timbre and subdivisions follow the current scene.
+      const kind = move === 7 ? 'shaka' : move === 8 ? 'chirp' : 'clang';
+      const count = move === 7 || move === 8 ? (step % 4 >= 2 ? 2 : 1) : step % 2 === 0 ? 1 : 0;
+      event.metal = { kind, count, strength, pitch: [1, 1.5, 1.19, 2][Math.floor(step / 4)] };
+    }
+    if (!plan) return event;
+    const a = plan.strength;
+    // Stutters use the currently selected bass pad, including its rest state.
+    if (plan.move === 2 && step >= 8) {
+      const index = positions(state.groove).findLastIndex(p => p <= 8);
+      event.bass = state.bass[index].on ? { ...state.bass[index], index, ticks: 1, nextOn: false, slide: false } : null;
+    }
+    if (plan.move === 4 && step >= 12 && step < 15) { event.bass = null; event.drums = []; }
+    if (event.bass) {
+      if (plan.move === 3) event.bass.note = clamp(event.bass.note + Math.floor(step / 4) * 3, 24, 72);
+      if (plan.move === 5) { event.bass.accent = step % 4 === 0; event.bass.slide = step % 4 !== 0; }
+    }
+    event.jam = { ...plan, cutoff: clamp(state.knobs.cutoff + a * (plan.move === 1 ? 0.32 * Math.sin(step * Math.PI / 4) : (step / 15 - 0.5) * 0.4)) };
+    return event;
+  }
 
   class Engine {
     constructor(context, state) {
@@ -110,7 +148,7 @@
       this.analyser = node('createAnalyser');
       this.analyser.fftSize = 512;
       this.mix.connect(this.highpass).connect(comp).connect(ceiling).connect(this.master).connect(this.analyser).connect(context.destination);
-      this.buses = Object.fromEntries(['bass', ...TRACKS].map(track => {
+      this.buses = Object.fromEntries(['bass', ...TRACKS, 'metal'].map(track => {
         const bus = node('createGain'); bus.connect(this.mix); return [track, bus];
       }));
       this.osc = node('createOscillator');
@@ -148,6 +186,7 @@
       set(this.bassLevel.gain, 0.58 / (1 + 0.65 * state.knobs.drive));
       set(this.master.gain, state.volume * 0.8);
       for (const track of ['bass', ...TRACKS]) set(this.buses[track].gain, state.enabled[track] ? 1 : 0);
+      set(this.buses.metal.gain, state.metal && state.enabled.metal ? 1 : 0);
       if (this.osc.type !== state.waveform) this.osc.type = state.waveform;
     }
     note(event, time, tickDuration, knobs) {
@@ -230,10 +269,62 @@
       else source.start(time, ((tick % 16) * 0.037) % 0.5);
       source.stop(end);
     }
+    metalHit(kind, time, duration, strength, pitch) {
+      const ctx = this.ctx, nodes = [], sources = [];
+      const keep = node => { this.keep(node); nodes.push(node); return node; };
+      const amp = keep(ctx.createGain());
+      const length = Math.min(kind === 'clang' ? 0.22 : 0.075, duration * 0.94);
+      amp.gain.setValueAtTime(0, time);
+      amp.gain.linearRampToValueAtTime(0.045 + strength * 0.05, time + 0.002);
+      amp.gain.exponentialRampToValueAtTime(0.0001, time + length);
+      amp.connect(this.buses.metal);
+      if (kind === 'shaka') {
+        const src = keep(ctx.createBufferSource()); src.buffer = this.noise;
+        const filter = keep(ctx.createBiquadFilter()); filter.type = 'highpass'; filter.frequency.value = 6500;
+        src.connect(filter).connect(amp); sources.push(src);
+      } else {
+        // Inharmonic partials give struck metal; short pitch sweeps give chirps.
+        for (const ratio of [1, 1.483, 2.137, 3.791]) {
+          const osc = keep(ctx.createOscillator()); osc.type = 'sine';
+          const hz = (kind === 'chirp' ? 1700 : 620) * pitch * ratio;
+          osc.frequency.setValueAtTime(Math.min(hz, 14000), time);
+          if (kind === 'chirp') osc.frequency.exponentialRampToValueAtTime(Math.min(hz * 0.23, 10000), time + length * 0.8);
+          osc.connect(amp); sources.push(osc);
+        }
+      }
+      let remaining = sources.length;
+      for (const src of sources) {
+        this.sources.add(src);
+        src.onended = () => {
+          this.sources.delete(src);
+          if (--remaining === 0) for (const node of nodes) { node.disconnect(); this.nodes.delete(node); }
+        };
+        src.start(time); src.stop(time + length + 0.005);
+      }
+    }
     step(event, time, tickDuration, state) {
       if (event.bass && state.enabled.bass) this.note(event.bass, time, tickDuration, state.knobs);
       else this.rest(time);
+      // Detune is independent of note/slide frequency automation. Each gesture
+      // ends inside this tick so stopping the mode cannot leave a bent note.
+      this.osc.detune.setValueAtTime(0, time);
+      if (event.jam) {
+        const jam = event.jam;
+        this.base.offset.setTargetAtTime(90 * Math.pow(55, jam.cutoff), time, 0.012);
+        if (jam.move === 0 && state.enabled.bass) {
+          for (let n = 0; n < jam.repeats; n++) {
+            const start = time + tickDuration * n / jam.repeats;
+            this.osc.detune.linearRampToValueAtTime(jam.direction * (300 + jam.strength * 1500), start + tickDuration / jam.repeats * 0.3);
+            this.osc.detune.linearRampToValueAtTime(-jam.direction * jam.strength * 700, start + tickDuration / jam.repeats * 0.65);
+            this.osc.detune.linearRampToValueAtTime(0, start + tickDuration / jam.repeats * 0.95);
+          }
+        }
+      } else this.base.offset.setTargetAtTime(90 * Math.pow(55, state.knobs.cutoff), time, 0.018);
       for (const track of event.drums) if (state.enabled[track]) this.drum(track, time, event.step);
+      if (event.metal && state.metal && state.enabled.metal) {
+        const hit = event.metal;
+        for (let i = 0; i < hit.count; i++) this.metalHit(hit.kind, time + tickDuration * i / hit.count, tickDuration / hit.count, hit.strength, hit.pitch);
+      }
     }
     fadeOut(time = this.ctx.currentTime) {
       this.master.gain.cancelScheduledValues(time);
@@ -277,7 +368,7 @@
     const ctx = new Offline(2, pre + frames, sr);
     const engine = new Engine(ctx, state);
     try {
-      for (let i = 0; i < (bars + 1) * 16; i++) engine.step(eventsAt(state, i), i * tickDuration, tickDuration, state);
+      for (let i = 0; i < (bars + 1) * 16; i++) engine.step(jamEvent(state, i, null), i * tickDuration, tickDuration, state);
       const audio = await ctx.startRendering();
       const channels = [0, 1].map(c => audio.getChannelData(c).slice(pre, pre + frames));
       // Tiny edge fades avoid clicks when the rendered file is opened on its own.
@@ -288,7 +379,7 @@
       return new Blob([encodeWav(channels, sr)], { type: 'audio/wav' });
     } finally { engine.dispose(); }
   }
-  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
+  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, JAM_MOVES, performanceBpm, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.QB = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -3,6 +3,62 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const Q = require('../engine.js');
 
+test('metal scenes are available only when enabled, with legal hit counts and pitches', () => {
+  const state = Q.initialState(); state.metal = true;
+  const moves = new Set();
+  for (let seed = 0; seed < 200; seed++) {
+    const plan = Q.jamPlan(seed, 1, false, true); moves.add(plan.move);
+    for (let i = 0; i < 16; i++) {
+      const hit = Q.jamEvent(state, i, plan).metal;
+      assert.ok(['clang', 'shaka', 'chirp'].includes(hit.kind));
+      assert.ok(hit.count >= 0 && hit.count <= 2); assert.ok(hit.pitch >= 1 && hit.pitch <= 2);
+    }
+  }
+  assert.equal(moves.size, 9);
+  assert.equal(Q.jamEvent(Q.initialState(), 0, Q.jamPlan(3)).metal, undefined);
+  assert.equal(Q.normalize(state).metal, true);
+});
+
+test('speed variation is bounded and rush returns to the untouched base tempo', () => {
+  assert.deepEqual([0, 1, 2, 3, -1].map(i => Q.performanceBpm(128, 303, false, i)), [143, 164, 192, 128, 128]);
+  const speeds = new Set();
+  for (let seed = 0; seed < 200; seed++) {
+    speeds.add(Q.performanceBpm(128, seed, true));
+    for (const bpm of [60, 128, 180]) for (const rush of [-1, 0, 1, 2, 3]) {
+      const speed = Q.performanceBpm(bpm, seed, true, rush);
+      assert.ok(speed >= 60 && speed <= 240);
+    }
+  }
+  assert.equal(speeds.size, 4);
+});
+
+test('jam is deterministic, varied and cannot overwrite the source pattern or controls', () => {
+  const state = Q.initialState(), before = Q.clone(state), moves = new Set();
+  for (let seed = 0; seed < 200; seed++) {
+    const plan = Q.jamPlan(seed, 1); moves.add(plan.move);
+    assert.deepEqual(plan, Q.jamPlan(seed, 1));
+    for (let tick = 0; tick < 16; tick++) {
+      const event = Q.jamEvent(state, tick, plan);
+      assert.ok(event.jam.cutoff >= 0 && event.jam.cutoff <= 1);
+      if (event.bass) { assert.ok(event.bass.note >= 24 && event.bass.note <= 72); assert.ok(event.bass.ticks > 0); }
+    }
+  }
+  assert.equal(moves.size, 6); assert.deepEqual(state, before);
+  for (let i = 0; i < 16; i++) assert.deepEqual(Q.jamEvent(state, i, null), Q.eventsAt(state, i));
+});
+
+test('GO MAD forces scratch, stutters respect rests and breaks return on the last tick', () => {
+  const s = Q.initialState();
+  assert.equal(Q.jamPlan(20, 0, true).move, 0);
+  assert.equal(Q.jamPlan(20, 0, true).strength, 1);
+  const plan = { ...Q.jamPlan(303), move: 2 };
+  s.bass[4].on = false;
+  for (let t = 8; t < 16; t++) assert.equal(Q.jamEvent(s, t, plan).bass, null);
+  const broken = Q.jamEvent(s, 12, { ...plan, move: 4 });
+  assert.equal(broken.bass, null); assert.deepEqual(broken.drums, []);
+  assert.deepEqual(Q.jamEvent(s, 15, { ...plan, move: 4 }).drums, Q.eventsAt(s, 15).drums);
+});
+
 test('factory creates isolated, valid state', () => {
   const a = Q.initialState(), b = Q.initialState();
   a.bass[0].note = 70; a.knobs.cutoff = 0; a.drums.kick[0] = false;

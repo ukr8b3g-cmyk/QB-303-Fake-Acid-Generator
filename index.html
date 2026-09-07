@@ -31,6 +31,22 @@
         <div class="scope-display"><div class="scope-caption"><span><i id="beat-led" class="led"></i> LIVE NONSENSE</span><span id="step-counter">-- / 16</span></div><canvas id="scope" width="520" height="100" aria-label="音の波形"></canvas><span class="scope-idle" id="scope-idle">PRESS PLAY. GET WEIRD.</span></div>
         <div class="volume"><label for="volume">VOLUME <output id="volume-value">42</output></label><input id="volume" type="range" min="0" max="100" value="42"><span>まずは小さな音で。</span></div>
       </section>
+      <section class="jam-deck" aria-label="自動で遊ぶ">
+        <div class="jam-heading"><span class="jam-tag">LET THE TOY TAKE OVER.</span><output id="jam-now">YOUR HANDS. YOUR NOISE.</output></div>
+        <div class="jam-controls">
+          <button id="auto-jam" aria-pressed="false">AUTO JAM<small>勝手に、弾ける。</small></button>
+          <label class="chaos-control" for="chaos">CHAOS <output id="chaos-value">65</output><input id="chaos" type="range" min="0" max="100" value="65"><small>ちょい変化 ↔ はちゃめちゃ</small></label>
+          <button id="hold-riff" aria-pressed="false">HOLD RIFF<small>このリフをキープ</small></button>
+          <button id="go-mad">GO MAD!<small>1小節、ひっかけ！</small></button>
+        </div>
+        <div class="jam-controls extra-play">
+          <button id="metal" aria-pressed="false">METAL!<small>カンカン・キンキン</small></button>
+          <button id="speed-wander" aria-pressed="false">WILD SPEED<small>速さもランダム</small></button>
+          <button id="rush">RUSH!<small>4小節、ぶっ飛ばす</small></button>
+          <button id="color-pop" aria-label="COLOR POP 配色変更、現在 classic">COLOR POP<small>色まで、弾ける。</small></button>
+        </div>
+        <p class="jam-hint">AUTO JAM → LET'S GO。METAL! で金属音も追加。RUSH! で加速と配色チェンジ。CALM DOWN で落ち着く。<output id="live-bpm" aria-label="演奏中のテンポ">128 BPM</output></p>
+      </section>
       <section class="sound-section" aria-label="音色">
         <div class="section-heading"><h2><span class="section-index">01</span> TWIST THE NOISE <small>回すと、ギュルギュル。</small></h2><div class="wave-switch" role="group" aria-label="波形"><button data-wave="sawtooth" aria-pressed="true">SAW <span aria-hidden="true">ϟ</span></button><button data-wave="square" aria-pressed="false">SQUARE <span aria-hidden="true">⊓</span></button></div></div>
         <div class="knob-row" id="knobs"></div>
