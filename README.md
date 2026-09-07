@@ -11,6 +11,8 @@ ComfyUI・VST・AIモデル・アカウント・マイクは使いません。
 
 ## 遊び方
 
+**[最新版のZIPをダウンロード](https://github.com/ukr8b3g-cmyk/QB-303-Fake-Acid-Generator/archive/refs/heads/main.zip)**
+
 ZIP を展開し、`index.html` を Chrome / Edge などで開いて **LET'S GO** を押します。
 ページを開いただけでは音は出ません。最初は小さな音量で試してください。
 
