@@ -15,7 +15,9 @@
   let timer = null, frame = null, previewTimer = null, saveTimer = null;
   let tick = 0, nextTime = 0, bar = null;
   let visuals = [];
+  let platterEvent = null, platterAngle = 0, platterTime = null, platterBpm = state.bpm;
   let autoJam = false, jamAmount = 0.65, holdRiff = false, madQueued = false, activeJam = null;
+  let liveHookVariation = state.hook.variation;
   let speedWander = false, rushQueued = false, rushBar = -1, liveBpm = state.bpm, colorIndex = 0;
   const colors = ['classic', 'hot-pink', 'ultraviolet', 'electric-blue', 'acid-lime'];
   function colorPop() {
@@ -34,6 +36,57 @@
     ['slide', 'SLIDE', 'GLIDE', 'ぬるっとつなぐ'],
     ['drive', 'DIRTY', 'OVERDRIVE', 'ちょっと汚す']
   ];
+  const cutoffHzFor = value => 90 * Math.pow(55, Q.clamp(value));
+  let shownCutoffHz = cutoffHzFor(state.knobs.cutoff);
+  let targetCutoffHz = shownCutoffHz, cutoffVisualTime = 0, cutoffVisualTau = 0.012;
+  let cutoffVisualActive = false, cutoffPainted = false;
+  function advanceCutoffVisual(time) {
+    if (!Number.isFinite(time) || time <= cutoffVisualTime) return;
+    shownCutoffHz = targetCutoffHz + (shownCutoffHz - targetCutoffHz) * Math.exp(-(time - cutoffVisualTime) / cutoffVisualTau);
+    cutoffVisualTime = time;
+  }
+  function paintCutoffVisual() {
+    const value = Q.clamp(Math.log(shownCutoffHz / 90) / Math.log(55));
+    $('[data-knob="cutoff"]').style.setProperty('--value', value);
+    const readout = $('#value-cutoff');
+    readout.value = '~' + String(Math.round(value * 100)).padStart(2, '0');
+    readout.title = '再生中のフィルター値。ノブを操作すると基準値を変更できます。';
+    cutoffPainted = true;
+  }
+  function restoreCutoffVisual() {
+    if (!cutoffPainted) return;
+    $('[data-knob="cutoff"]').style.setProperty('--value', state.knobs.cutoff);
+    const readout = $('#value-cutoff');
+    readout.value = String(Math.round(state.knobs.cutoff * 100)).padStart(2, '0');
+    readout.removeAttribute('title');
+    cutoffPainted = false;
+  }
+  function resetTurntable() {
+    platterEvent = null; platterAngle = 0; platterTime = null; platterBpm = state.bpm;
+    const button = $('#go-mad');
+    button.classList.remove('scratching', 'queued');
+    button.querySelector('.turntable-platter').style.removeProperty('transform');
+  }
+  function paintTurntable(clock) {
+    const button = $('#go-mad'), platter = button.querySelector('.turntable-platter');
+    const scratching = running && platterEvent?.jam?.move === 0 && platterEvent.bass &&
+      platterEvent.enabled.bass && state.enabled.bass &&
+      clock >= platterEvent.time && clock < platterEvent.time + platterEvent.tickDuration;
+    button.classList.toggle('queued', madQueued && !scratching);
+    button.classList.toggle('scratching', Boolean(scratching && state.lights && !motion.matches));
+    if (!running || !state.lights || motion.matches) {
+      platter.style.removeProperty('transform'); platterTime = clock; return;
+    }
+    if (platterTime !== null) {
+      const elapsed = Math.max(0, Math.min(clock - platterTime, 0.25));
+      platterAngle = (platterAngle + elapsed * platterBpm * 1.5) % 360;
+    }
+    platterTime = clock;
+    const phase = scratching ? Math.max(0, Math.min(1, (clock - platterEvent.time) / platterEvent.tickDuration)) : 0;
+    const scratchAngle = scratching ? platterEvent.jam.direction * 55 *
+      Math.sin(phase * Math.PI * 2 * platterEvent.jam.repeats) : 0;
+    platter.style.transform = 'rotate(' + (platterAngle + scratchAngle).toFixed(1) + 'deg)';
+  }
   const say = text => { $('#status').textContent = text; };
   function persist() {
     clearTimeout(saveTimer);
@@ -106,6 +159,11 @@
     $('#hold-riff').setAttribute('aria-pressed', String(holdRiff));
     $('#chaos-value').value = Math.round(jamAmount * 100);
     $('#metal').setAttribute('aria-pressed', String(state.metal));
+    $('#hook').setAttribute('aria-pressed', String(state.hook.enabled));
+    $('#hook-variation').textContent = `HOOK ${state.hook.variation + 1}/3`;
+    $('#vox').setAttribute('aria-pressed', String(state.vox.enabled));
+    $('#vox-level').value = Math.round(state.vox.level * 100);
+    $('#vox-value').value = Math.round(state.vox.level * 100);
     $('#speed-wander').setAttribute('aria-pressed', String(speedWander));
     if (!running) $('#live-bpm').textContent = `${state.bpm} BPM`;
     $('#bpm').value = state.bpm;
@@ -169,6 +227,9 @@
       clearPreview();
       engine = new Q.Engine(ctx, state); running = true;
       tick = 0; nextTime = ctx.currentTime + 0.045; visuals = []; bar = Q.clone(state);
+      liveHookVariation = state.hook.variation;
+      shownCutoffHz = targetCutoffHz = cutoffHzFor(state.knobs.cutoff);
+      cutoffVisualTime = heardTime(); cutoffVisualActive = false; restoreCutoffVisual(); resetTurntable();
       syncTransport(); schedule(); timer = setInterval(schedule, 25); ensureFrame();
       say('ノブを回して遊ぼう。音が大きいときは VOLUME を下げてください。');
     } catch (error) { stop(error.message || '音声の初期化に失敗しました。'); }
@@ -183,6 +244,7 @@
     $('#jam-now').textContent = autoJam ? 'READY TO JAM' : 'YOUR HANDS. YOUR NOISE.';
     if (engine) { const old = engine; old.fadeOut(); setTimeout(() => old.dispose(), 35); engine = null; }
     clearPreview(); clearLights();
+    cutoffVisualActive = false; restoreCutoffVisual(); resetTurntable();
     if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
     $('#step-counter').textContent = '-- / 16'; syncTransport(); drawScope(null); say(message);
   }
@@ -208,13 +270,16 @@
               syncView(); persist();
             }
           }
+          if (!autoJam) liveHookVariation = state.hook.variation;
+          else if (!holdRiff && tick % 64 === 0) liveHookVariation = Math.floor(Q.random(jamSeed ^ 0x484f4f4b)() * 3);
           bar = Q.clone(state);
+          bar.hook.variation = liveHookVariation;
           liveBpm = Q.performanceBpm(bar.bpm, jamSeed, speedWander, rushBar);
         }
         const duration = 60 / liveBpm / 4;
         const event = Q.jamEvent({ ...bar, knobs: state.knobs, metal: state.metal }, tick, activeJam);
         engine.step(event, nextTime, duration, state);
-        visuals.push({ ...event, bpm: liveBpm, pop: rushBar >= 0 && event.step === 0, jamLabel: (rushBar >= 0 ? `RUSH ${rushBar + 1}/4 · ` : '') + (activeJam ? Q.JAM_MOVES[activeJam.move] : state.metal ? 'CLANG CLANG' : 'YOUR HANDS. YOUR NOISE.'), time: nextTime, cursor: Q.positions(bar.groove).findLastIndex(p => p <= event.step), enabled: { ...state.enabled }, slide: state.knobs.slide });
+        visuals.push({ ...event, bpm: liveBpm, pop: rushBar >= 0 && event.step === 0, jamLabel: (rushBar >= 0 ? `RUSH ${rushBar + 1}/4 · ` : '') + (activeJam ? Q.JAM_MOVES[activeJam.move] : state.metal ? 'CLANG CLANG' : 'YOUR HANDS. YOUR NOISE.'), time: nextTime, tickDuration: duration, cursor: Q.positions(bar.groove).findLastIndex(p => p <= event.step), enabled: { ...state.enabled }, slide: state.knobs.slide });
         nextTime += duration; tick++;
       }
     } catch (_) { stop('音声処理を停止しました。LET\'S GO で再開してください。'); }
@@ -240,6 +305,11 @@
     const clock = heardTime();
     while (visuals.length && visuals[0].time <= clock) {
       const event = visuals.shift();
+      platterEvent = event; platterBpm = event.bpm;
+      advanceCutoffVisual(event.time);
+      targetCutoffHz = cutoffHzFor(event.jam?.cutoff ?? state.knobs.cutoff);
+      cutoffVisualTau = event.jam ? 0.012 : 0.018;
+      cutoffVisualActive = Boolean(event.jam) || cutoffVisualActive;
       $('#jam-now').textContent = event.jamLabel;
       $('#live-bpm').textContent = `${event.bpm} BPM`;
       if (event.pop && rushBar >= 0 && state.lights && !motion.matches) colorPop();
@@ -256,9 +326,16 @@
         for (const track of event.drums) if (event.enabled[track] && state.enabled[track]) {
           pulse($(`[data-drum="${track}"][data-step="${event.step}"]`)); pulse($(`[data-hit="${track}"]`)); sounding = true;
         }
+        if (event.hook && state.hook.enabled) { pulse($('#hook'), 110); sounding = true; }
+        if (event.vox && state.vox.enabled && state.vox.level > 0) { pulse($('#vox'), 220); sounding = true; }
         if (sounding) pulse($('#beat-led'), 75);
       }
     }
+    advanceCutoffVisual(clock);
+    if (cutoffVisualActive && targetCutoffHz === cutoffHzFor(state.knobs.cutoff) && Math.abs(shownCutoffHz - targetCutoffHz) < 1) cutoffVisualActive = false;
+    if (running && cutoffVisualActive && state.lights && !motion.matches) paintCutoffVisual();
+    else restoreCutoffVisual();
+    paintTurntable(clock);
     for (const [el, end] of pulses) if (end <= now) { el.classList.remove('hit', 'sliding'); pulses.delete(el); }
     drawScope(engine || previewEngine);
     if (running || previewEngine || pulses.size) ensureFrame();
@@ -293,6 +370,10 @@
 
   $('#play').addEventListener('click', () => running ? stop() : start());
   $('#metal').addEventListener('click', () => { state.metal = !state.metal; changed(); say(state.metal ? 'METAL! カンカンを追加。AUTO JAM でシャカシャカやキュッキュッも。' : '金属音をオフ。'); });
+  $('#hook').addEventListener('click', () => { state.hook.enabled = !state.hook.enabled; changed(); patternMessage(state.hook.enabled ? 'HOOK を追加。ベースに合わせて2小節のフレーズを演奏。' : 'HOOK をオフ。'); });
+  $('#hook-variation').addEventListener('click', () => { state.hook.variation = (state.hook.variation + 1) % 3; liveHookVariation = state.hook.variation; changed(); patternMessage(`HOOK のフレーズを ${state.hook.variation + 1}/3 に変更。`); });
+  $('#vox').addEventListener('click', () => { state.vox.enabled = !state.vox.enabled; changed(); patternMessage(state.vox.enabled ? 'ROBOT VOX を追加。短い声の断片が鳴ります。' : 'ROBOT VOX をオフ。'); });
+  $('#vox-level').addEventListener('input', e => { state.vox.level = Number(e.target.value) / 100; changed(); });
   $('#speed-wander').addEventListener('click', () => { speedWander = !speedWander; syncView(); patternMessage(speedWander ? 'WILD SPEED! 小節ごとに速さが変化。元のBPMはキープ。' : '次の小節で元の速さへ。'); });
   $('#rush').addEventListener('click', () => { rushQueued = true; if (!running) start(); else say('次の小節から4小節のRUSH! 加速して、戻ります。'); });
   $('#color-pop').addEventListener('click', colorPop);

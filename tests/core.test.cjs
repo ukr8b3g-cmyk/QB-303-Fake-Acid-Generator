@@ -44,7 +44,25 @@ test('jam is deterministic, varied and cannot overwrite the source pattern or co
     }
   }
   assert.equal(moves.size, 6); assert.deepEqual(state, before);
-  for (let i = 0; i < 16; i++) assert.deepEqual(Q.jamEvent(state, i, null), Q.eventsAt(state, i));
+  for (let i = 0; i < 16; i++) {
+    const { hook, vox, ...base } = Q.jamEvent(state, i, null);
+    assert.deepEqual(base, Q.eventsAt(state, i));
+  }
+});
+
+test('HOOK repeats over two bars and VOX survives saved settings and mute controls', () => {
+  const state = Q.initialState();
+  assert.deepEqual(Q.jamEvent(state, 2, null).hook, Q.jamEvent(state, 34, null).hook);
+  assert.notDeepEqual(Q.jamEvent(state, 7, null).hook, Q.jamEvent(state, 23, null).hook);
+  assert.ok(Q.jamEvent(state, 46, null).vox);
+  assert.equal(Q.jamEvent(state, 47, null).vox, null);
+  assert.ok(Q.jamEvent(state, 174, null).vox);
+  state.hook.variation = 2; state.vox.level = 0.7;
+  const saved = Q.normalize(Q.clone(state));
+  assert.equal(saved.hook.variation, 2); assert.equal(saved.vox.level, 0.7);
+  saved.hook.enabled = false; saved.vox.enabled = false;
+  assert.equal(Q.jamEvent(saved, 2, null).hook, null);
+  assert.equal(Q.jamEvent(saved, 46, null).vox, null);
 });
 
 test('GO MAD forces scratch, stutters respect rests and breaks return on the last tick', () => {

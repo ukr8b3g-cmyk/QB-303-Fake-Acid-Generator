@@ -11,6 +11,12 @@
     weird: { kick: [0, 3, 8, 11], hat: [0, 3, 6, 7, 10, 14, 15], clap: [4, 10, 12] }
   };
   const DEFAULT_KNOBS = { cutoff: 0.34, resonance: 0.48, bite: 0.50, slide: 0.38, drive: 0.18 };
+  // Original two-bar fragments. Each entry is a sixteenth-step and a semitone offset from the bass root.
+  const HOOK_PATTERNS = [
+    [[2, 24], [7, 27], [10, 31], [18, 24], [23, 34], [27, 31]],
+    [[2, 24], [6, 31], [11, 27], [17, 24], [22, 31], [29, 34]],
+    [[3, 27], [8, 24], [14, 31], [19, 34], [24, 31], [28, 27]]
+  ];
   const clone = value => JSON.parse(JSON.stringify(value));
   function random(seed) {
     let a = seed >>> 0;
@@ -30,6 +36,7 @@
       version: 1, bpm: 128, volume: 0.42, waveform: 'sawtooth', groove: 'straight', preset: 'four',
       knobs: { ...DEFAULT_KNOBS }, seed: 303, lights: true,
       metal: false, enabled: { bass: true, kick: true, hat: true, clap: true, metal: true },
+      hook: { enabled: true, variation: 0 }, vox: { enabled: true, level: 0.35 },
       bass: [36, 36, 43, 39, 36, 46, 43, 39].map((note, i) => ({ note, on: i !== 3, accent: i === 0 || i === 5, slide: i === 1 || i === 6 })),
       drums: drumPattern()
     };
@@ -46,6 +53,10 @@
     s.preset = Object.hasOwn(PRESETS, raw.preset) || raw.preset === 'custom' ? raw.preset : s.preset;
     if (typeof raw.lights === 'boolean') s.lights = raw.lights;
     if (typeof raw.metal === 'boolean') s.metal = raw.metal;
+    if (typeof raw.hook?.enabled === 'boolean') s.hook.enabled = raw.hook.enabled;
+    s.hook.variation = Math.round(number(raw.hook?.variation, s.hook.variation, 0, 2));
+    if (typeof raw.vox?.enabled === 'boolean') s.vox.enabled = raw.vox.enabled;
+    s.vox.level = number(raw.vox?.level, s.vox.level, 0, 1);
     for (const key of Object.keys(s.knobs)) s.knobs[key] = number(raw.knobs?.[key], s.knobs[key], 0, 1);
     for (const key of Object.keys(s.enabled)) if (typeof raw.enabled?.[key] === 'boolean') s.enabled[key] = raw.enabled[key];
     if (Array.isArray(raw.bass) && raw.bass.length === 8) s.bass = raw.bass.map((v, i) => ({
@@ -103,6 +114,14 @@
   function jamEvent(state, tick, plan) {
     const event = eventsAt(state, tick);
     const step = event.step;
+    const phrase = HOOK_PATTERNS[state.hook?.variation ?? 0] || HOOK_PATTERNS[0];
+    const hookNote = state.hook?.enabled ? phrase.find(([at]) => at === ((tick % 32) + 32) % 32) : null;
+    event.hook = hookNote ? { note: clamp(state.bass[0].note + hookNote[1], 36, 96), accent: step % 8 >= 6 } : null;
+    const voxStep = ((tick % 128) + 128) % 128;
+    event.vox = state.vox?.enabled && voxStep === 46 ? {
+      vowel: (Math.floor(tick / 32) + state.hook.variation) % 3,
+      note: clamp(state.bass[0].note + 12, 36, 72)
+    } : null;
     if (state.metal) {
       const move = plan?.move, strength = plan?.strength ?? 0.55;
       // Independent percussion; timbre and subdivisions follow the current scene.
@@ -117,7 +136,7 @@
       const index = positions(state.groove).findLastIndex(p => p <= 8);
       event.bass = state.bass[index].on ? { ...state.bass[index], index, ticks: 1, nextOn: false, slide: false } : null;
     }
-    if (plan.move === 4 && step >= 12 && step < 15) { event.bass = null; event.drums = []; }
+    if (plan.move === 4 && step >= 12 && step < 15) { event.bass = null; event.drums = []; event.hook = null; event.vox = null; }
     if (event.bass) {
       if (plan.move === 3) event.bass.note = clamp(event.bass.note + Math.floor(step / 4) * 3, 24, 72);
       if (plan.move === 5) { event.bass.accent = step % 4 === 0; event.bass.slide = step % 4 !== 0; }
@@ -148,7 +167,7 @@
       this.analyser = node('createAnalyser');
       this.analyser.fftSize = 512;
       this.mix.connect(this.highpass).connect(comp).connect(ceiling).connect(this.master).connect(this.analyser).connect(context.destination);
-      this.buses = Object.fromEntries(['bass', ...TRACKS, 'metal'].map(track => {
+      this.buses = Object.fromEntries(['bass', ...TRACKS, 'metal', 'hook', 'vox'].map(track => {
         const bus = node('createGain'); bus.connect(this.mix); return [track, bus];
       }));
       this.osc = node('createOscillator');
@@ -187,6 +206,8 @@
       set(this.master.gain, state.volume * 0.8);
       for (const track of ['bass', ...TRACKS]) set(this.buses[track].gain, state.enabled[track] ? 1 : 0);
       set(this.buses.metal.gain, state.metal && state.enabled.metal ? 1 : 0);
+      set(this.buses.hook.gain, state.hook.enabled ? 0.7 : 0);
+      set(this.buses.vox.gain, state.vox.enabled ? state.vox.level : 0);
       if (this.osc.type !== state.waveform) this.osc.type = state.waveform;
     }
     note(event, time, tickDuration, knobs) {
@@ -240,8 +261,8 @@
         source = this.keep(ctx.createBufferSource()); source.buffer = this.noise;
         const filter = this.keep(ctx.createBiquadFilter()); local.push(filter);
         filter.type = track === 'hat' ? 'highpass' : 'bandpass';
-        filter.frequency.value = track === 'hat' ? 7600 : 1600;
-        filter.Q.value = track === 'hat' ? 0.7 : 0.6;
+        filter.frequency.value = track === 'hat' ? 7600 : 1350;
+        filter.Q.value = track === 'hat' ? 0.7 : 0.75;
         source.connect(filter).connect(env);
         if (track === 'hat') {
           env.gain.setValueAtTime(0, time);
@@ -249,15 +270,24 @@
           env.gain.exponentialRampToValueAtTime(0.001, time + 0.065);
           end = time + 0.08;
         } else {
+          // A lower noise body and three short high-frequency snaps make the clap
+          // audible through the bass without raising the whole drum bus.
+          const snapFilter = this.keep(ctx.createBiquadFilter()); local.push(snapFilter);
+          snapFilter.type = 'highpass'; snapFilter.frequency.value = 4200; snapFilter.Q.value = 0.7;
+          const snapEnv = this.keep(ctx.createGain()); local.push(snapEnv); snapEnv.gain.value = 0;
+          source.connect(snapFilter).connect(snapEnv).connect(this.buses.clap);
           for (let burst = 0; burst < 3; burst++) {
             const t = time + burst * 0.009;
             env.gain.setValueAtTime(0.001, t);
-            env.gain.linearRampToValueAtTime(0.55 - burst * 0.04, t + 0.001);
+            env.gain.linearRampToValueAtTime(0.50 - burst * 0.04, t + 0.001);
             env.gain.exponentialRampToValueAtTime(0.025, t + 0.008);
+            snapEnv.gain.setValueAtTime(0.001, t);
+            snapEnv.gain.linearRampToValueAtTime(0.22 - burst * 0.04, t + 0.001);
+            snapEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.008);
           }
-          env.gain.setValueAtTime(0.30, time + 0.027);
-          env.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
-          end = time + 0.20;
+          env.gain.setValueAtTime(0.32, time + 0.027);
+          env.gain.exponentialRampToValueAtTime(0.001, time + 0.20);
+          end = time + 0.21;
         }
       }
       env.connect(this.buses[track]); this.sources.add(source); local.push(source);
@@ -302,6 +332,69 @@
         src.start(time); src.stop(time + length + 0.005);
       }
     }
+    hookHit(event, time, tickDuration) {
+      const ctx = this.ctx;
+      const osc = this.keep(ctx.createOscillator()); osc.type = 'square';
+      const filter = this.keep(ctx.createBiquadFilter()); filter.type = 'lowpass'; filter.Q.value = 3;
+      const amp = this.keep(ctx.createGain()); amp.gain.value = 0;
+      const length = Math.min(0.19, tickDuration * 1.55);
+      const hz = frequency(event.note);
+      osc.frequency.setValueAtTime(hz, time);
+      osc.frequency.exponentialRampToValueAtTime(hz * 0.995, time + length);
+      filter.frequency.setValueAtTime(event.accent ? 2300 : 1700, time);
+      filter.frequency.exponentialRampToValueAtTime(420, time + length);
+      amp.gain.setValueAtTime(0, time);
+      amp.gain.linearRampToValueAtTime(event.accent ? 0.20 : 0.16, time + 0.004);
+      amp.gain.exponentialRampToValueAtTime(0.0001, time + length);
+      osc.connect(filter).connect(amp).connect(this.buses.hook);
+      this.sources.add(osc);
+      osc.onended = () => {
+        this.sources.delete(osc);
+        for (const node of [osc, filter, amp]) { node.disconnect(); this.nodes.delete(node); }
+      };
+      osc.start(time); osc.stop(time + length + 0.005);
+    }
+    voxHit(event, time) {
+      const ctx = this.ctx, nodes = [], sources = [];
+      const keep = node => { this.keep(node); nodes.push(node); return node; };
+      const length = 0.24;
+      const carrier = keep(ctx.createOscillator()); carrier.type = 'sawtooth';
+      carrier.frequency.setValueAtTime(frequency(event.note), time);
+      carrier.frequency.exponentialRampToValueAtTime(frequency(event.note) * 0.94, time + length);
+      const amp = keep(ctx.createGain()); amp.gain.value = 0;
+      amp.gain.setValueAtTime(0, time);
+      amp.gain.linearRampToValueAtTime(0.38, time + 0.025);
+      amp.gain.setValueAtTime(0.38, time + 0.105);
+      amp.gain.exponentialRampToValueAtTime(0.0001, time + length);
+      amp.connect(this.buses.vox);
+      // Three moving formants turn a pitched carrier into an intentionally wordless voice.
+      const vowels = [[720, 1200, 2600], [440, 1900, 2750], [500, 950, 2400]];
+      const from = vowels[event.vowel % 3], to = vowels[(event.vowel + 1) % 3];
+      for (let i = 0; i < 3; i++) {
+        const formant = keep(ctx.createBiquadFilter()); formant.type = 'bandpass'; formant.Q.value = i === 0 ? 4 : 6;
+        formant.frequency.setValueAtTime(from[i], time);
+        formant.frequency.exponentialRampToValueAtTime(to[i], time + length * 0.8);
+        const level = keep(ctx.createGain()); level.gain.value = [1, 0.75, 0.55][i];
+        carrier.connect(formant).connect(level).connect(amp);
+      }
+      const breath = keep(ctx.createBufferSource()); breath.buffer = this.noise;
+      const hiss = keep(ctx.createBiquadFilter()); hiss.type = 'highpass'; hiss.frequency.value = 2600;
+      const consonant = keep(ctx.createGain()); consonant.gain.value = 0;
+      consonant.gain.setValueAtTime(0, time);
+      consonant.gain.linearRampToValueAtTime(0.055, time + 0.003);
+      consonant.gain.exponentialRampToValueAtTime(0.0001, time + 0.055);
+      breath.connect(hiss).connect(consonant).connect(this.buses.vox);
+      sources.push(carrier, breath);
+      let remaining = sources.length;
+      for (const source of sources) {
+        this.sources.add(source);
+        source.onended = () => {
+          this.sources.delete(source);
+          if (--remaining === 0) for (const node of nodes) { node.disconnect(); this.nodes.delete(node); }
+        };
+        source.start(time); source.stop(time + length + 0.005);
+      }
+    }
     step(event, time, tickDuration, state) {
       if (event.bass && state.enabled.bass) this.note(event.bass, time, tickDuration, state.knobs);
       else this.rest(time);
@@ -321,6 +414,8 @@
         }
       } else this.base.offset.setTargetAtTime(90 * Math.pow(55, state.knobs.cutoff), time, 0.018);
       for (const track of event.drums) if (state.enabled[track]) this.drum(track, time, event.step);
+      if (event.hook && state.hook.enabled) this.hookHit(event.hook, time, tickDuration);
+      if (event.vox && state.vox.enabled && state.vox.level > 0) this.voxHit(event.vox, time);
       if (event.metal && state.metal && state.enabled.metal) {
         const hit = event.metal;
         for (let i = 0; i < hit.count; i++) this.metalHit(hit.kind, time + tickDuration * i / hit.count, tickDuration / hit.count, hit.strength, hit.pitch);

@@ -39,15 +39,19 @@
           <button id="auto-jam" aria-pressed="false">AUTO JAM<small>勝手に、弾ける。</small></button>
           <label class="chaos-control" for="chaos">CHAOS <output id="chaos-value">65</output><input id="chaos" type="range" min="0" max="100" value="65"><small>ちょい変化 ↔ はちゃめちゃ</small></label>
           <button id="hold-riff" aria-pressed="false">HOLD RIFF<small>このリフをキープ</small></button>
-          <button id="go-mad">GO MAD!<small>1小節、ひっかけ！</small></button>
+          <button id="go-mad" title="押すと次の小節を1小節スクラッチ" aria-label="GO MAD! 次の小節をスクラッチ"><span class="turntable-mini" aria-hidden="true"><span class="turntable-platter"></span><span class="turntable-arm"></span></span><span class="turntable-copy">GO MAD!<small>1小節、スクラッチ</small></span></button>
         </div>
         <div class="jam-controls extra-play">
           <button id="metal" aria-pressed="false">METAL!<small>カンカン・キンキン</small></button>
           <button id="speed-wander" aria-pressed="false">WILD SPEED<small>速さもランダム</small></button>
           <button id="rush">RUSH!<small>4小節、ぶっ飛ばす</small></button>
           <button id="color-pop" aria-label="COLOR POP 配色変更、現在 classic">COLOR POP<small>色まで、弾ける。</small></button>
+          <button id="hook" aria-pressed="true">HOOK<small>短いメロディー</small></button>
+          <button id="hook-variation" aria-label="HOOK フレーズ切替">HOOK 1/3</button>
+          <button id="vox" aria-pressed="true">ROBOT VOX<small>ことば未満の声</small></button>
+          <label class="vox-level-control" for="vox-level">VOX LEVEL <output id="vox-value">35</output><input id="vox-level" type="range" min="0" max="100" value="35" aria-label="ROBOT VOX の音量"></label>
         </div>
-        <p class="jam-hint">AUTO JAM → LET'S GO。METAL! で金属音も追加。RUSH! で加速と配色チェンジ。COLOR LOCK で配色を固定。CALM DOWN で落ち着く。<output id="live-bpm" aria-label="演奏中のテンポ">128 BPM</output></p>
+        <p class="jam-hint">AUTO JAM → LET'S GO。HOOK はフレーズ切替、VOX は音量調整可能。RUSH! で加速。CALM DOWN で落ち着く。<output id="live-bpm" aria-label="演奏中のテンポ">128 BPM</output></p>
       </section>
       <section class="sound-section" aria-label="音色">
         <div class="section-heading"><h2><span class="section-index">01</span> TWIST THE NOISE <small>回すと、ギュルギュル。</small></h2><div class="wave-switch" role="group" aria-label="波形"><button data-wave="sawtooth" aria-pressed="true">SAW <span aria-hidden="true">ϟ</span></button><button data-wave="square" aria-pressed="false">SQUARE <span aria-hidden="true">⊓</span></button></div></div>
@@ -77,7 +81,7 @@
       <footer class="machine-footer"><span id="status" role="status" aria-live="polite">準備OK。LET'S GO で音が出ます。</span><div class="footer-toggles"><button id="color-lock" class="lights-switch" aria-pressed="false"><span class="toggle-track" aria-hidden="true"></span> COLOR LOCK</button><button id="lights" class="lights-switch" aria-pressed="true"><span class="toggle-track" aria-hidden="true"></span> LEDs</button></div></footer>
     </main>
     <footer class="page-footer"><span>JUST A TOY. <strong>MAKE A LITTLE NOISE.</strong></span><span>SPACE 再生 / 停止 · ESC 停止 · ノブは上下ドラッグ</span><a href="https://github.com/ukr8b3g-cmyk/QB-303-Fake-Acid-Generator" target="_blank" rel="noopener noreferrer">SOURCE ↗</a></footer>
-    <details class="help"><summary>あそびかた / ABOUT THIS TOY</summary><p>LET'S GO → ノブを上下にドラッグ → NEW RIFF で別のベース。ノブは矢印キーでも操作でき、ダブルクリックで初期値に戻ります。音符の入力は不要です。</p><p>光は鳴っている音に連動します。点滅が気になるときは LEDs をオフにしてください。COLOR LOCK をオンにすると、その時点の配色を固定して COLOR POP と RUSH の自動配色変更を止めます。画面を離れると自動停止します。</p><p>SAVE WAV は現在のパターンと音色を4小節の WAV に書き出します。ノブを回した演奏の録音ではありません。設定はこのブラウザに自動保存されます。</p><p>TB-303 の完全再現ではなく、アシッド風の音を楽しむ独立した玩具です。Roland とは関係ありません。インストール・アカウント・マイク・外部音声ファイルは不要です。</p></details>
+    <details class="help"><summary>あそびかた / ABOUT THIS TOY</summary><p>LET'S GO → ノブを上下にドラッグ → NEW RIFF で別のベース。HOOK で短いメロディーを ON/OFF、HOOK 1/3 でフレーズ切替。ROBOT VOX は ON/OFF と音量を調整できます。ノブは矢印キーでも操作でき、ダブルクリックで初期値に戻ります。</p><p>AUTO JAM は4小節ごとに HOOK のフレーズを変えます。HOLD RIFF でベースと HOOK の自動変化を止めます。光は鳴っている音に連動します。点滅が気になるときは LEDs をオフにしてください。COLOR LOCK は自動配色変更を止めます。画面を離れると自動停止します。</p><p>SAVE WAV は現在のベース、ドラム、HOOK、VOX と音色を4小節の WAV に書き出します。ノブを回した演奏の録音ではありません。設定はこのブラウザに自動保存されます。</p><p>TB-303 の完全再現ではなく、アシッド風の音を楽しむ独立した玩具です。Roland とは関係ありません。インストール・アカウント・マイク・外部音声ファイルは不要です。</p></details>
   </div>
   <noscript>この音遊びには JavaScript が必要です。ブラウザの設定で有効にしてください。</noscript>
 </body>
