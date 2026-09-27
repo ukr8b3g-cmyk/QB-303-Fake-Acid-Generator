@@ -17,7 +17,7 @@
   let visuals = [];
   let platterEvent = null, platterAngle = 0, platterTime = null, platterBpm = state.bpm;
   let autoJam = true, jamAmount = 0.25, holdRiff = false, madQueued = false, activeJam = null;
-  let bassRandomizer = !state.manual.bassPattern, randomizerStartBar = 0, autoPhraseSeed = 0, acidRamp = null;
+  let bassRandomizer = !state.manual.bassPattern, randomizerStartBar = 0, autoPhraseSeed = 0;
   let liveEnabled = { ...state.enabled };
   let liveHookVariation = state.hook.variation;
   let speedWander = false, rushQueued = false, rushBar = -1, liveBpm = state.bpm;
@@ -107,18 +107,6 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { try { localStorage.setItem(STORAGE, JSON.stringify(state)); } catch (_) { /* No storage permission: keep this session in memory. */ } }, 150);
   }
-  function rampKnobsAt(atTick) {
-    if (!acidRamp) return { ...state.knobs };
-    const progress = Q.clamp((atTick - acidRamp.startTick) / 64);
-    return Object.fromEntries(Object.keys(state.knobs).map(key => [key,
-      acidRamp.from[key] + (acidRamp.to[key] - acidRamp.from[key]) * progress]));
-  }
-  function finishAcidRamp(atTick) {
-    if (!acidRamp) return;
-    state.knobs = rampKnobsAt(atTick);
-    acidRamp = null;
-    syncView(); persist();
-  }
   function changed() {
     engine?.update(state);
     syncView();
@@ -133,7 +121,7 @@
     $('#knobs').append(block);
     const dial = block.querySelector('.dial');
     let drag = null;
-    const set = value => { if (acidRamp) finishAcidRamp(tick); state.knobs[key] = Q.clamp(value); state.manual.knobs[key] = true; changed(); };
+    const set = value => { state.knobs[key] = Q.clamp(value); state.manual.knobs[key] = true; changed(); };
     dial.addEventListener('pointerdown', e => {
       if (e.button !== 0 || drag) return;
       e.preventDefault(); dial.focus({ preventScroll: true });
@@ -272,7 +260,6 @@
       tick = 0; nextTime = ctx.currentTime + 0.045; visuals = []; bar = Q.clone(state);
       liveHookVariation = state.hook.variation;
       liveEnabled = { ...state.enabled }; randomizerStartBar = 0; autoPhraseSeed = jamSeed;
-      if (acidRamp) acidRamp.startTick = 0;
       Object.assign(shownKnobs, state.knobs); Object.assign(targetKnobs, state.knobs);
       knobVisualTime = performance.now(); knobMotionActive = false;
       shownCutoffHz = targetCutoffHz = cutoffHzFor(state.knobs.cutoff);
@@ -283,7 +270,6 @@
     finally { if (token === startToken) starting = false; $('#play').disabled = false; }
   }
   function stop(message = '停止しました。設定はそのままです。') {
-    if (acidRamp) finishAcidRamp(tick);
     ++startToken; starting = false; running = false; $('#play').disabled = false;
     clearInterval(timer); timer = null; visuals = [];
     activeJam = null; madQueued = false;
@@ -327,12 +313,10 @@
           syncView(); syncRush();
         }
         const duration = 60 / liveBpm / 4;
-        if (acidRamp && tick >= acidRamp.startTick + 64) finishAcidRamp(tick);
-        const baseKnobs = rampKnobsAt(tick);
-        const liveKnobs = Q.performanceKnobs(baseKnobs, tick, autoPhraseSeed, jamAmount, autoJam, state.manual.knobs);
+        const liveKnobs = Q.performanceKnobs(state.knobs, tick, autoPhraseSeed, jamAmount, autoJam, state.manual.knobs);
         const event = Q.jamEvent({ ...bar, knobs: liveKnobs, metal: state.metal }, tick, activeJam);
         engine.step(event, nextTime, duration, { ...state, knobs: liveKnobs, enabled: liveEnabled });
-        visuals.push({ ...event, bpm: liveBpm, knobs: liveKnobs, animatedKnobs: Boolean(autoJam || acidRamp), jamLabel: (rushBar >= 0 ? `RUSH ${rushBar + 1}/4 · ` : '') + (!liveEnabled.bass && state.enabled.bass ? 'BASS REST · ' : '') + (activeJam ? Q.JAM_MOVES[activeJam.move] : state.metal ? 'CLANG CLANG' : 'YOUR HANDS. YOUR NOISE.'), time: nextTime, tickDuration: duration, cursor: Q.positions(bar.groove).findLastIndex(p => p <= event.step), enabled: { ...liveEnabled }, slide: liveKnobs.slide });
+        visuals.push({ ...event, bpm: liveBpm, knobs: liveKnobs, animatedKnobs: Boolean(autoJam), jamLabel: (rushBar >= 0 ? `RUSH ${rushBar + 1}/4 · ` : '') + (!liveEnabled.bass && state.enabled.bass ? 'BASS REST · ' : '') + (activeJam ? Q.JAM_MOVES[activeJam.move] : state.metal ? 'CLANG CLANG' : 'YOUR HANDS. YOUR NOISE.'), time: nextTime, tickDuration: duration, cursor: Q.positions(bar.groove).findLastIndex(p => p <= event.step), enabled: { ...liveEnabled }, slide: liveKnobs.slide });
         nextTime += duration; tick++;
       }
     } catch (_) { stop('音声処理を停止しました。LET\'S GO で再開してください。'); }
@@ -519,20 +503,18 @@
     changed();
     patternMessage(bassRandomizer ? 'BASS RAND をオン。4周ごとに新しいリフ。' : 'BASS RAND をオフ。');
   });
-  $('#acid').addEventListener('click', () => {
-    const from = rampKnobsAt(tick);
-    const to = { ...from };
-    for (const [key, amount] of [['cutoff', 0.18], ['resonance', 0.20], ['bite', 0.22], ['slide', 0.18], ['drive', 0.16]]) to[key] = Math.min(1, from[key] + amount);
-    for (const key of Object.keys(state.manual.knobs)) state.manual.knobs[key] = true;
-    acidRamp = { from, to, startTick: running ? tick : 0 };
-    syncView(); persist();
-    say(running ? 'INCREASE ACID! 4小節かけて音色を強めます。' : 'INCREASE ACID を予約。再生から4小節かけて音色を強めます。');
+  $('#beat-random').addEventListener('click', () => {
+    state.seed = (state.seed + 0x9e3779b9) >>> 0;
+    state.drums = Q.newBeat(state.seed);
+    state.preset = 'custom';
+    for (const track of Q.TRACKS) { state.manual.drums[track] = true; liveEnabled[track] = state.enabled[track]; }
+    changed(); patternMessage('新しいドラムが出ました。');
   });
   $('#calm').addEventListener('click', () => {
     stop();
     state = Q.initialState(); state.lights = !motion.matches;
     autoJam = true; jamAmount = 0.25; holdRiff = false; bassRandomizer = true;
-    acidRamp = null; speedWander = false; rushQueued = false; rushBar = -1;
+    speedWander = false; rushQueued = false; rushBar = -1;
     tick = 0; bar = null; randomizerStartBar = 0; liveBpm = state.bpm;
     liveEnabled = { ...state.enabled }; liveHookVariation = state.hook.variation;
     lastPadSound.voice = -1; lastPadSound.sfx = -1;
@@ -545,7 +527,7 @@
   motion.addEventListener('change', e => { if (e.matches) { state.lights = false; changed(); } });
   $('#save').addEventListener('click', async () => {
     const button = $('#save'); button.disabled = true;
-    const snapshot = Q.clone(state); snapshot.knobs = rampKnobsAt(tick); say('4小節の WAV を作成しています…');
+    const snapshot = Q.clone(state); say('4小節の WAV を作成しています…');
     try {
       const blob = await Q.renderWav(snapshot, 4);
       const url = URL.createObjectURL(blob), link = document.createElement('a');

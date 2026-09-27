@@ -189,8 +189,8 @@ test('factory creates isolated, valid state', () => {
 });
 test('demo defaults and manual AUTO MODE overrides survive normalization', () => {
   const state = Q.initialState();
-  assert.equal(state.groove, 'weird'); assert.equal(state.preset, 'weird');
-  assert.deepEqual(state.drums, Q.drumPattern('weird'));
+  assert.equal(state.groove, 'weird'); assert.equal(state.preset, 'four');
+  assert.deepEqual(state.drums, Q.drumPattern('four'));
   assert.equal(state.metal, true); assert.equal(state.hook.enabled, true);
   assert.equal(state.arrangement, 'arcade'); assert.equal(state.vox.enabled, true); assert.equal(state.vox.level, 1);
   assert.equal(Q.autoBassRest(0, true), true); assert.equal(Q.autoBassRest(1, true), false);
@@ -199,6 +199,24 @@ test('demo defaults and manual AUTO MODE overrides survive normalization', () =>
   assert.deepEqual(Q.normalize(Q.clone(state)).manual, state.manual);
   const restored = Q.normalize({ version: 1, manual: { bass: 'true', drums: { kick: 1 }, knobs: { cutoff: null } } });
   assert.deepEqual(restored.manual, Q.initialState().manual);
+});
+test('beat gacha generates varied 16-step drums with a stable pulse and backbeat', () => {
+  const beats = Array.from({ length: 24 }, (_, seed) => Q.newBeat(seed));
+  assert.equal(new Set(beats.map(beat => JSON.stringify(beat))).size, beats.length);
+  for (const beat of beats) {
+    assert.deepEqual(Object.keys(beat), Q.TRACKS);
+    for (const track of Q.TRACKS) {
+      assert.equal(beat[track].length, 16);
+      assert.ok(beat[track].every(value => typeof value === 'boolean'));
+    }
+    assert.equal(beat.kick[0], true);
+    assert.equal(beat.kick[8], true);
+    assert.equal(beat.clap[4], true);
+    assert.equal(beat.clap[12], true);
+    assert.deepEqual(Q.newBeat(beats.indexOf(beat)), beat);
+  }
+  const state = Q.initialState(); state.drums = beats[3]; state.preset = 'custom';
+  assert.deepEqual(Q.normalize(state).drums, beats[3]);
 });
 test('manual bass, drum and knob changes override only their AUTO MODE lanes', () => {
   const state = Q.initialState();

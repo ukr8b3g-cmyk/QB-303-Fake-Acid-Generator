@@ -46,15 +46,27 @@
     const p = Object.hasOwn(PRESETS, preset) ? PRESETS[preset] : PRESETS.four;
     return Object.fromEntries(TRACKS.map(track => [track, Array.from({ length: 16 }, (_, i) => p[track].includes(i))]));
   }
+  function newBeat(seed) {
+    const rng = random(seed);
+    const pattern = drumPattern('four');
+    // Keep a danceable pulse and backbeat while varying the spaces between them.
+    for (const step of [4, 12]) pattern.kick[step] = rng() < 0.72;
+    for (const step of [3, 6, 7, 10, 11, 14, 15]) pattern.kick[step] = rng() < 0.17;
+    for (let step = 0; step < 16; step += 2) pattern.hat[step] = rng() < 0.85;
+    for (let step = 1; step < 16; step += 2) pattern.hat[step] = rng() < 0.30;
+    for (const step of [2, 6, 10, 14]) pattern.clap[step] = rng() < 0.12;
+    for (const step of [4, 12]) pattern.clap[step] = true;
+    return pattern;
+  }
   function initialState() {
     return {
-      version: 1, bpm: 128, volume: 0.42, waveform: 'sawtooth', groove: 'weird', preset: 'weird',
+      version: 1, bpm: 128, volume: 0.42, waveform: 'sawtooth', groove: 'weird', preset: 'four',
       knobs: { ...DEFAULT_KNOBS }, seed: 303, lights: true,
       metal: true, enabled: { bass: true, kick: true, hat: true, clap: true, metal: true },
       hook: { enabled: true, variation: 0 }, arrangement: 'arcade', vox: { enabled: true, level: 1 },
       manual: { bass: false, bassPattern: false, drums: { kick: false, hat: false, clap: false }, knobs: Object.fromEntries(Object.keys(DEFAULT_KNOBS).map(key => [key, false])) },
       bass: [36, 36, 43, 39, 36, 46, 43, 39].map((note, i) => ({ note, on: i !== 3, accent: i === 0 || i === 5, slide: i === 1 || i === 6 })),
-      drums: drumPattern('weird')
+      drums: drumPattern('four')
     };
   }
   function normalize(raw) {
@@ -654,7 +666,7 @@
       return new Blob([encodeWav(channels, sr)], { type: 'audio/wav' });
     } finally { engine.dispose(); }
   }
-  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, PAD_VOICES, PAD_SFX, makePadSound, performanceBpm, autoTrackMask, autoBassRest, performanceEnabled, bassRandomizerPlan, autoKnobs, performanceKnobs, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
+  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, PAD_VOICES, PAD_SFX, makePadSound, performanceBpm, autoTrackMask, autoBassRest, performanceEnabled, bassRandomizerPlan, autoKnobs, performanceKnobs, jamPlan, jamEvent, initialState, normalize, drumPattern, newBeat, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.QB = api;
 })(typeof window !== 'undefined' ? window : globalThis);
