@@ -101,9 +101,9 @@ test('synth arrangements have distinct two-bar counterlines and persist', () => 
 test('AUTO MODE uses a four-bar drum phrase and moves every sound knob within bounds', () => {
   const first = Array.from({ length: 4 }, (_, bar) => Q.autoTrackMask(303, bar));
   assert.deepEqual(first[0], { kick: true, hat: true, clap: true });
+  assert.deepEqual(first[1], first[0]);
   assert.deepEqual(first[3], first[0]);
-  assert.ok(first[1].kick === false || first[1].hat === false || first[1].clap === false);
-  for (const mask of first) assert.ok(Object.values(mask).some(Boolean));
+  for (const mask of first) assert.ok(Object.values(mask).filter(Boolean).length >= 2);
   assert.deepEqual(first, Array.from({ length: 4 }, (_, bar) => Q.autoTrackMask(303, bar)));
   const base = { ...Q.DEFAULT_KNOBS };
   assert.deepEqual(Q.autoKnobs(base, 7, 303, 0), base);
@@ -115,13 +115,12 @@ test('AUTO MODE uses a four-bar drum phrase and moves every sound knob within bo
   assert.deepEqual(base, Q.DEFAULT_KNOBS);
 });
 
-test('BASS RAND rests for two bars, returns with a new riff, and repeats every four bars', () => {
-  assert.deepEqual(Q.bassRandomizerPlan(4, 5, true), { rest: false, refresh: false });
-  const cycle = Array.from({ length: 8 }, (_, bar) => Q.bassRandomizerPlan(bar + 5, 5, true));
-  assert.deepEqual(cycle.map(plan => plan.rest), [true, true, false, false, true, true, false, false]);
-  assert.deepEqual(cycle.map(plan => plan.refresh), [false, false, true, false, false, false, true, false]);
-  assert.equal(Q.bassRandomizerPlan(9, 5, false).refresh, true);
-  assert.equal(Q.bassRandomizerPlan(9, 5, false).rest, false);
+test('AUTO MODE rests bass for one 16-step loop, then plays for one loop; BASS RAND refreshes every four', () => {
+  assert.deepEqual(Array.from({ length: 8 }, (_, bar) => Q.autoBassRest(bar, true)), [true, false, true, false, true, false, true, false]);
+  assert.deepEqual(Array.from({ length: 8 }, (_, bar) => Q.autoBassRest(bar, false)), Array(8).fill(false));
+  assert.deepEqual(Q.bassRandomizerPlan(4, 5), { refresh: false });
+  const cycle = Array.from({ length: 9 }, (_, bar) => Q.bassRandomizerPlan(bar + 5, 5));
+  assert.deepEqual(cycle.map(plan => plan.refresh), [false, false, false, false, true, false, false, false, true]);
 });
 
 test('GO MAD forces scratch, stutters respect rests and breaks return on the last tick', () => {

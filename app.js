@@ -16,7 +16,7 @@
   let tick = 0, nextTime = 0, bar = null;
   let visuals = [];
   let platterEvent = null, platterAngle = 0, platterTime = null, platterBpm = state.bpm;
-  let autoJam = true, jamAmount = 0.65, holdRiff = false, madQueued = false, activeJam = null;
+  let autoJam = true, jamAmount = 0.25, holdRiff = false, madQueued = false, activeJam = null;
   let bassRandomizer = false, randomizerStartBar = 0, autoPhraseSeed = 0, acidRamp = null;
   let liveEnabled = { ...state.enabled };
   let liveHookVariation = state.hook.variation;
@@ -299,10 +299,10 @@
           if (phrasePhase === 0) autoPhraseSeed = jamSeed;
           if (rushQueued) { rushBar = 0; rushQueued = false; }
           else if (rushBar >= 0) rushBar = rushBar < 3 ? rushBar + 1 : -1;
-          activeJam = autoJam || madQueued || rushBar >= 0 ? Q.jamPlan(jamSeed, jamAmount, madQueued, state.metal) : null;
+          activeJam = (autoJam && phrasePhase === 3) || madQueued || rushBar >= 0 ? Q.jamPlan(jamSeed, jamAmount, madQueued, state.metal) : null;
           if (rushBar >= 0 && !madQueued) activeJam = { ...activeJam, strength: 1, move: [state.metal ? 6 : 3, state.metal ? 7 : 2, 0, 5][rushBar] };
           madQueued = false;
-          const bassPlan = Q.bassRandomizerPlan(barNumber, randomizerStartBar, autoJam);
+          const bassPlan = Q.bassRandomizerPlan(barNumber, randomizerStartBar);
           if (bassRandomizer && !holdRiff && bassPlan.refresh) {
             state.seed = (state.seed + 0x9e3779b9) >>> 0;
             state.bass = Q.newRiff(state.seed);
@@ -314,7 +314,7 @@
           if (autoJam) {
             const mask = Q.autoTrackMask(autoPhraseSeed, phrasePhase);
             for (const track of Q.TRACKS) liveEnabled[track] = state.enabled[track] && mask[track];
-            if (bassRandomizer && !holdRiff && bassPlan.rest) liveEnabled.bass = false;
+            if (Q.autoBassRest(barNumber, autoJam)) liveEnabled.bass = false;
           }
           bar = Q.clone(state);
           bar.hook.variation = liveHookVariation;
@@ -441,7 +441,7 @@
   $('#rush').addEventListener('click', () => { rushQueued = true; syncRush(); if (!running) start(); else say('RUSH を予約。次の小節から4小節で加速して戻ります。'); });
   $('#auto-jam').addEventListener('click', () => {
     autoJam = !autoJam; syncView();
-    patternMessage(autoJam ? 'AUTO MODE! 4小節でベース、ドラム、HOOK、ノブが展開します。' : 'AUTO MODE をオフにしました。');
+    patternMessage(autoJam ? 'AUTO MODE! ベースは16ステップ休み、次の16ステップで戻ります。' : 'AUTO MODE をオフ。ベースは手動のON/OFFに戻ります。');
     if (!running) $('#jam-now').textContent = autoJam ? 'READY TO JAM' : 'YOUR HANDS. YOUR NOISE.';
   });
   $('#chaos').addEventListener('input', e => { jamAmount = Number(e.target.value) / 100; syncView(); });
@@ -471,7 +471,7 @@
     bassRandomizer = !bassRandomizer;
     randomizerStartBar = running ? Math.ceil(tick / 16) : 0;
     syncView();
-    patternMessage(bassRandomizer ? 'BASS RAND をオン。4小節ごとに新しいリフ。AUTO MODE 中は2小節休んで戻ります。' : 'BASS RAND をオフ。');
+    patternMessage(bassRandomizer ? 'BASS RAND をオン。4周ごとに新しいリフ。' : 'BASS RAND をオフ。');
   });
   $('#acid').addEventListener('click', () => {
     const from = rampKnobsAt(tick);

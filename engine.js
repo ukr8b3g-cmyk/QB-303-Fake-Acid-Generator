@@ -130,23 +130,18 @@
   function autoTrackMask(seed, barInPhrase) {
     const mask = { kick: true, hat: true, clap: true };
     const phase = ((barInPhrase % 4) + 4) % 4;
-    if (phase === 1 || phase === 2) {
-      const tracks = TRACKS.slice();
+    if (phase === 2) {
       const rng = random(seed ^ 0x4452554d);
-      const first = tracks.splice(Math.floor(rng() * tracks.length), 1)[0];
-      const second = tracks[Math.floor(rng() * tracks.length)];
-      mask[phase === 1 ? first : second] = false;
-      if (phase === 2 && rng() > 0.5) mask[first] = false;
+      if (rng() > 0.35) mask[TRACKS[Math.floor(rng() * TRACKS.length)]] = false;
     }
     return mask;
   }
-  function bassRandomizerPlan(bar, startBar, autoMode) {
+  function autoBassRest(bar, autoMode) {
+    return Boolean(autoMode) && ((bar % 2) + 2) % 2 === 0;
+  }
+  function bassRandomizerPlan(bar, startBar) {
     const elapsed = bar - startBar;
-    if (elapsed < 0) return { rest: false, refresh: false };
-    return {
-      rest: autoMode && elapsed % 4 < 2,
-      refresh: autoMode ? elapsed % 4 === 2 : elapsed > 0 && elapsed % 4 === 0
-    };
+    return { refresh: elapsed > 0 && elapsed % 4 === 0 };
   }
   function autoKnobs(base, tick, seed, amount = 0.65) {
     const rng = random(seed ^ 0x4b4e4f42);
@@ -550,7 +545,7 @@
       return new Blob([encodeWav(channels, sr)], { type: 'audio/wav' });
     } finally { engine.dispose(); }
   }
-  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, performanceBpm, autoTrackMask, bassRandomizerPlan, autoKnobs, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
+  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, performanceBpm, autoTrackMask, autoBassRest, bassRandomizerPlan, autoKnobs, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.QB = api;
 })(typeof window !== 'undefined' ? window : globalThis);
