@@ -160,7 +160,7 @@
     $('#chaos-value').value = Math.round(jamAmount * 100);
     $('#metal').setAttribute('aria-pressed', String(state.metal));
     $('#hook').setAttribute('aria-pressed', String(state.hook.enabled));
-    $('#hook-variation').textContent = `HOOK ${state.hook.variation + 1}/3`;
+    $('#hook-variation').textContent = `HOOK ${state.hook.variation + 1}/${Q.HOOK_PATTERN_COUNT}`;
     $('#vox').setAttribute('aria-pressed', String(state.vox.enabled));
     $('#vox-level').value = Math.round(state.vox.level * 100);
     $('#vox-value').value = Math.round(state.vox.level * 100);
@@ -271,7 +271,7 @@
             }
           }
           if (!autoJam) liveHookVariation = state.hook.variation;
-          else if (!holdRiff && tick % 64 === 0) liveHookVariation = Math.floor(Q.random(jamSeed ^ 0x484f4f4b)() * 3);
+          else if (!holdRiff && tick % 64 === 0) liveHookVariation = Math.floor(Q.random(jamSeed ^ 0x484f4f4b)() * Q.HOOK_PATTERN_COUNT);
           bar = Q.clone(state);
           bar.hook.variation = liveHookVariation;
           liveBpm = Q.performanceBpm(bar.bpm, jamSeed, speedWander, rushBar);
@@ -371,7 +371,7 @@
   $('#play').addEventListener('click', () => running ? stop() : start());
   $('#metal').addEventListener('click', () => { state.metal = !state.metal; changed(); say(state.metal ? 'METAL! カンカンを追加。AUTO JAM でシャカシャカやキュッキュッも。' : '金属音をオフ。'); });
   $('#hook').addEventListener('click', () => { state.hook.enabled = !state.hook.enabled; changed(); patternMessage(state.hook.enabled ? 'HOOK を追加。ベースに合わせて2小節のフレーズを演奏。' : 'HOOK をオフ。'); });
-  $('#hook-variation').addEventListener('click', () => { state.hook.variation = (state.hook.variation + 1) % 3; liveHookVariation = state.hook.variation; changed(); patternMessage(`HOOK のフレーズを ${state.hook.variation + 1}/3 に変更。`); });
+  $('#hook-variation').addEventListener('click', () => { state.hook.variation = (state.hook.variation + 1) % Q.HOOK_PATTERN_COUNT; liveHookVariation = state.hook.variation; changed(); patternMessage(`HOOK のフレーズを ${state.hook.variation + 1}/${Q.HOOK_PATTERN_COUNT} に変更。`); });
   $('#vox').addEventListener('click', () => { state.vox.enabled = !state.vox.enabled; changed(); patternMessage(state.vox.enabled ? 'ROBOT VOX を追加。短い声の断片が鳴ります。' : 'ROBOT VOX をオフ。'); });
   $('#vox-level').addEventListener('input', e => { state.vox.level = Number(e.target.value) / 100; changed(); });
   $('#speed-wander').addEventListener('click', () => { speedWander = !speedWander; syncView(); patternMessage(speedWander ? 'WILD SPEED! 小節ごとに速さが変化。元のBPMはキープ。' : '次の小節で元の速さへ。'); });

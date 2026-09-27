@@ -57,12 +57,27 @@ test('HOOK repeats over two bars and VOX survives saved settings and mute contro
   assert.ok(Q.jamEvent(state, 46, null).vox);
   assert.equal(Q.jamEvent(state, 47, null).vox, null);
   assert.ok(Q.jamEvent(state, 174, null).vox);
-  state.hook.variation = 2; state.vox.level = 0.7;
+  state.hook.variation = 9; state.vox.level = 0.7;
   const saved = Q.normalize(Q.clone(state));
-  assert.equal(saved.hook.variation, 2); assert.equal(saved.vox.level, 0.7);
+  assert.equal(saved.hook.variation, 9); assert.equal(saved.vox.level, 0.7);
   saved.hook.enabled = false; saved.vox.enabled = false;
   assert.equal(Q.jamEvent(saved, 2, null).hook, null);
   assert.equal(Q.jamEvent(saved, 46, null).vox, null);
+});
+
+test('ten HOOK phrases are distinct and repeat over two bars', () => {
+  const state = Q.initialState(), signatures = new Set();
+  assert.equal(Q.HOOK_PATTERN_COUNT, 10);
+  for (let variation = 0; variation < 10; variation++) {
+    state.hook.variation = variation;
+    const phrase = Array.from({ length: 32 }, (_, tick) => Q.jamEvent(state, tick, null).hook?.note ?? null);
+    assert.ok(phrase.filter(Boolean).length >= 6);
+    assert.ok(phrase.every(note => note === null || note >= 36 && note <= 96));
+    assert.deepEqual(phrase, Array.from({ length: 32 }, (_, tick) => Q.jamEvent(state, tick + 32, null).hook?.note ?? null));
+    signatures.add(JSON.stringify(phrase));
+  }
+  assert.equal(signatures.size, 10);
+  assert.equal(Q.normalize({ ...state, hook: { enabled: true, variation: 999 } }).hook.variation, 9);
 });
 
 test('GO MAD forces scratch, stutters respect rests and breaks return on the last tick', () => {

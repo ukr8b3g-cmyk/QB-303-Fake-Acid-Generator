@@ -15,8 +15,16 @@
   const HOOK_PATTERNS = [
     [[2, 24], [7, 27], [10, 31], [18, 24], [23, 34], [27, 31]],
     [[2, 24], [6, 31], [11, 27], [17, 24], [22, 31], [29, 34]],
-    [[3, 27], [8, 24], [14, 31], [19, 34], [24, 31], [28, 27]]
+    [[3, 27], [8, 24], [14, 31], [19, 34], [24, 31], [28, 27]],
+    [[0, 24], [3, 31], [6, 34], [11, 31], [16, 27], [22, 29], [27, 24]],
+    [[1, 36], [5, 34], [9, 31], [15, 27], [18, 24], [25, 27], [30, 31]],
+    [[2, 24], [4, 27], [6, 31], [8, 34], [14, 31], [18, 36], [22, 34], [28, 27]],
+    [[0, 31], [7, 34], [12, 36], [16, 31], [21, 29], [27, 27]],
+    [[3, 24], [5, 36], [11, 34], [16, 31], [19, 27], [24, 24], [30, 31]],
+    [[0, 24], [4, 24], [7, 31], [10, 34], [16, 27], [20, 31], [23, 36], [29, 34]],
+    [[2, 34], [6, 31], [9, 27], [14, 24], [18, 27], [22, 31], [25, 34], [31, 36]]
   ];
+  const HOOK_PATTERN_COUNT = HOOK_PATTERNS.length;
   const clone = value => JSON.parse(JSON.stringify(value));
   function random(seed) {
     let a = seed >>> 0;
@@ -54,7 +62,7 @@
     if (typeof raw.lights === 'boolean') s.lights = raw.lights;
     if (typeof raw.metal === 'boolean') s.metal = raw.metal;
     if (typeof raw.hook?.enabled === 'boolean') s.hook.enabled = raw.hook.enabled;
-    s.hook.variation = Math.round(number(raw.hook?.variation, s.hook.variation, 0, 2));
+    s.hook.variation = Math.round(number(raw.hook?.variation, s.hook.variation, 0, HOOK_PATTERN_COUNT - 1));
     if (typeof raw.vox?.enabled === 'boolean') s.vox.enabled = raw.vox.enabled;
     s.vox.level = number(raw.vox?.level, s.vox.level, 0, 1);
     for (const key of Object.keys(s.knobs)) s.knobs[key] = number(raw.knobs?.[key], s.knobs[key], 0, 1);
@@ -474,7 +482,7 @@
       return new Blob([encodeWav(channels, sr)], { type: 'audio/wav' });
     } finally { engine.dispose(); }
   }
-  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, JAM_MOVES, performanceBpm, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
+  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, JAM_MOVES, performanceBpm, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.QB = api;
 })(typeof window !== 'undefined' ? window : globalThis);
