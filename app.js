@@ -17,7 +17,7 @@
   let visuals = [];
   let platterEvent = null, platterAngle = 0, platterTime = null, platterBpm = state.bpm;
   let autoJam = true, jamAmount = 0.25, holdRiff = false, madQueued = false, activeJam = null;
-  let bassRandomizer = !state.manual.bassPattern, randomizerStartBar = 0, autoPhraseSeed = 0;
+  let bassRandomizer = true, randomizerStartBar = 0, autoPhraseSeed = 0;
   let liveEnabled = { ...state.enabled };
   let liveHookVariation = state.hook.variation;
   let speedWander = false, rushQueued = false, rushBar = -1, liveBpm = state.bpm;
@@ -43,12 +43,6 @@
     const elapsed = Math.max(0, Math.min((time - knobVisualTime) / 1000, 0.1));
     knobVisualTime = time;
     for (const key of ['resonance', 'bite', 'slide', 'drive']) {
-      if (state.manual.knobs[key]) {
-        shownKnobs[key] = state.knobs[key];
-        $(`[data-knob="${key}"]`).style.setProperty('--value', shownKnobs[key]);
-        $(`#value-${key}`).value = String(Math.round(shownKnobs[key] * 100)).padStart(2, '0');
-        continue;
-      }
       shownKnobs[key] += (targetKnobs[key] - shownKnobs[key]) * (1 - Math.exp(-elapsed / 0.065));
       const value = Q.clamp(shownKnobs[key]);
       $(`[data-knob="${key}"]`).style.setProperty('--value', value);
@@ -121,7 +115,7 @@
     $('#knobs').append(block);
     const dial = block.querySelector('.dial');
     let drag = null;
-    const set = value => { state.knobs[key] = Q.clamp(value); state.manual.knobs[key] = true; changed(); };
+    const set = value => { state.knobs[key] = Q.clamp(value); changed(); };
     dial.addEventListener('pointerdown', e => {
       if (e.button !== 0 || drag) return;
       e.preventDefault(); dial.focus({ preventScroll: true });
@@ -145,8 +139,12 @@
     const button = document.createElement('button'); button.className = 'bass-pad'; button.dataset.bass = i;
     button.innerHTML = `<span class="pad-number">0${i + 1}</span><span class="pad-note"></span><span class="pad-marks"><i class="accent-dot"></i><i class="slide-mark">↗</i></span>`;
     button.addEventListener('click', () => {
-      state.bass[i].on = !state.bass[i].on; state.manual.bass = true; state.manual.bassPattern = true; bassRandomizer = false; liveEnabled.bass = state.enabled.bass; changed();
-      if (state.bass[i].on && !running) audition('bass', i, button);
+      if (autoJam) {
+        if (state.bass[i].on) { say('AUTO MODE のベースです。外すときは AUTO MODE をオフにしてください。'); return; }
+        state.bassAdds[i] = !state.bassAdds[i];
+      } else state.bass[i].on = !state.bass[i].on;
+      changed();
+      if ((state.bass[i].on || state.bassAdds[i]) && !running) audition('bass', i, button);
     });
     $('#bass-grid').append(button);
   }
@@ -161,7 +159,8 @@
       const button = document.createElement('button'); button.className = 'drum-step'; button.dataset.drum = track; button.dataset.step = i;
       button.setAttribute('aria-label', `${track.toUpperCase()} ステップ ${i + 1}`);
       button.addEventListener('click', () => {
-        state.drums[track][i] = !state.drums[track][i]; state.preset = 'custom'; state.manual.drums[track] = true; liveEnabled[track] = state.enabled[track]; changed();
+        if (autoJam && Q.drumPattern('four')[track][i]) { say('AUTO MODE の基本ビートです。外すときは AUTO MODE をオフにしてください。'); return; }
+        state.drums[track][i] = !state.drums[track][i]; state.preset = 'custom'; changed();
         if (state.drums[track][i] && !running) audition(track, i, button);
       });
       grid.append(button);
@@ -171,8 +170,7 @@
   const bassPads = $$('.bass-pad'), drumPads = $$('.drum-step');
   function syncView() {
     $('#auto-jam').setAttribute('aria-pressed', String(autoJam));
-    const hasManualOverride = state.manual.bass || state.manual.bassPattern || Object.values(state.manual.drums).some(Boolean) || Object.values(state.manual.knobs).some(Boolean);
-    $('#auto-jam small').textContent = !autoJam ? '手動演奏' : hasManualOverride ? '手動操作を優先中' : '4小節で展開';
+    $('#auto-jam small').textContent = autoJam ? '4小節で展開' : '手動演奏';
     $('#hold-riff').setAttribute('aria-pressed', String(holdRiff));
     $('#chaos').value = Math.round(jamAmount * 100);
     $('#chaos-value').value = Math.round(jamAmount * 100);
@@ -203,13 +201,14 @@
     $('#bass-toggle-state').textContent = state.enabled.bass ? 'ON' : 'OFF';
     $('#bass-toggle').setAttribute('aria-label', state.enabled.bass ? 'ベースをオフにする' : 'ベースをオンにする');
     bassPads.forEach((pad, i) => {
-      const step = state.bass[i]; pad.setAttribute('aria-pressed', String(step.on));
+      const step = state.bass[i]; pad.setAttribute('aria-pressed', String(step.on || (autoJam && state.bassAdds[i])));
       pad.setAttribute('aria-label', `ベース ${i + 1}: ${Q.noteName(step.note)}${step.accent ? ' アクセント' : ''}${step.slide ? ' スライド' : ''}`);
       pad.querySelector('.pad-note').textContent = Q.noteName(step.note);
       pad.querySelector('.accent-dot').style.visibility = step.accent ? 'visible' : 'hidden';
       pad.querySelector('.slide-mark').style.visibility = step.slide ? 'visible' : 'hidden';
     });
-    drumPads.forEach(pad => pad.setAttribute('aria-pressed', String(state.drums[pad.dataset.drum][+pad.dataset.step])));
+    const shownDrums = Q.layeredDrums(state.drums, autoJam);
+    drumPads.forEach(pad => pad.setAttribute('aria-pressed', String(shownDrums[pad.dataset.drum][+pad.dataset.step])));
     $('#lights').setAttribute('aria-pressed', String(state.lights));
     document.body.classList.toggle('lights-off', !state.lights);
     if (!state.lights) clearLights();
@@ -299,7 +298,7 @@
           if (rushBar >= 0 && !madQueued) activeJam = { ...activeJam, strength: 1, move: [state.metal ? 6 : 3, state.metal ? 7 : 2, 0, 5][rushBar] };
           madQueued = false;
           const bassPlan = Q.bassRandomizerPlan(barNumber, randomizerStartBar);
-          if (bassRandomizer && !state.manual.bassPattern && !holdRiff && bassPlan.refresh) {
+          if (bassRandomizer && !holdRiff && bassPlan.refresh) {
             state.seed = (state.seed + 0x9e3779b9) >>> 0;
             state.bass = Q.newRiff(state.seed);
             syncView(); persist();
@@ -308,12 +307,14 @@
           else if (!holdRiff && phrasePhase === 0) liveHookVariation = Math.floor(Q.random(autoPhraseSeed ^ 0x484f4f4b)() * Q.HOOK_PATTERN_COUNT);
           liveEnabled = Q.performanceEnabled(state, autoPhraseSeed, phrasePhase, barNumber, autoJam);
           bar = Q.clone(state);
+          bar.bass = Q.layeredBass(state.bass, state.bassAdds, autoJam);
+          bar.drums = Q.layeredDrums(state.drums, autoJam);
           bar.hook.variation = liveHookVariation;
           liveBpm = Q.performanceBpm(bar.bpm, jamSeed, speedWander, rushBar);
           syncView(); syncRush();
         }
         const duration = 60 / liveBpm / 4;
-        const liveKnobs = Q.performanceKnobs(state.knobs, tick, autoPhraseSeed, jamAmount, autoJam, state.manual.knobs);
+        const liveKnobs = Q.performanceKnobs(state.knobs, tick, autoPhraseSeed, jamAmount, autoJam);
         const event = Q.jamEvent({ ...bar, knobs: liveKnobs, metal: state.metal }, tick, activeJam);
         engine.step(event, nextTime, duration, { ...state, knobs: liveKnobs, enabled: liveEnabled });
         visuals.push({ ...event, bpm: liveBpm, knobs: liveKnobs, animatedKnobs: Boolean(autoJam), jamLabel: (rushBar >= 0 ? `RUSH ${rushBar + 1}/4 · ` : '') + (!liveEnabled.bass && state.enabled.bass ? 'BASS REST · ' : '') + (activeJam ? Q.JAM_MOVES[activeJam.move] : state.metal ? 'CLANG CLANG' : 'YOUR HANDS. YOUR NOISE.'), time: nextTime, tickDuration: duration, cursor: Q.positions(bar.groove).findLastIndex(p => p <= event.step), enabled: { ...liveEnabled }, slide: liveKnobs.slide });
@@ -377,7 +378,7 @@
     }
     advanceCutoffVisual(clock);
     if (cutoffVisualActive && targetCutoffHz === cutoffHzFor(state.knobs.cutoff) && Math.abs(shownCutoffHz - targetCutoffHz) < 1) cutoffVisualActive = false;
-    if (running && cutoffVisualActive && !state.manual.knobs.cutoff && state.lights && !motion.matches) paintCutoffVisual();
+    if (running && cutoffVisualActive && state.lights && !motion.matches) paintCutoffVisual();
     else restoreCutoffVisual();
     if (running && knobMotionActive && state.lights && !motion.matches) { paintOtherKnobs(now); otherKnobsPainted = true; }
     else if (otherKnobsPainted) {
@@ -484,21 +485,15 @@
   $$('[data-groove]').forEach(el => el.addEventListener('click', () => { state.groove = el.dataset.groove; changed(); patternMessage(`ノリを ${el.textContent} に変更。`); }));
   $$('[data-track]').forEach(el => el.addEventListener('click', () => {
     const track = el.dataset.track;
-    if (track === 'bass') {
-      const enteringFromRest = autoJam && !state.manual.bass && state.enabled.bass && !liveEnabled.bass;
-      state.manual.bass = true;
-      if (!enteringFromRest) state.enabled.bass = !state.enabled.bass;
-    } else {
-      state.manual.drums[track] = true;
-      state.enabled[track] = !state.enabled[track];
-    }
-    liveEnabled[track] = state.enabled[track]; changed();
+    state.enabled[track] = !state.enabled[track];
+    const currentBar = Math.floor(tick / 16);
+    liveEnabled[track] = Q.performanceEnabled(state, autoPhraseSeed, currentBar % 4, currentBar, autoJam)[track];
+    changed();
   }));
-  $$('[data-preset]').forEach(el => el.addEventListener('click', () => { state.preset = el.dataset.preset; state.drums = Q.drumPattern(state.preset); for (const track of Q.TRACKS) { state.manual.drums[track] = true; liveEnabled[track] = state.enabled[track]; } changed(); patternMessage(`ドラムを ${el.textContent} に変更。`); }));
-  $('#random').addEventListener('click', () => { state.seed = (state.seed + 0x9e3779b9) >>> 0; state.bass = Q.newRiff(state.seed); state.manual.bass = true; state.manual.bassPattern = true; bassRandomizer = false; liveEnabled.bass = state.enabled.bass; changed(); patternMessage('新しいベースが出ました。BASS RAND は手動リフを優先してオフ。'); });
+  $$('[data-preset]').forEach(el => el.addEventListener('click', () => { state.preset = el.dataset.preset; state.drums = Q.drumPattern(state.preset); changed(); patternMessage(`ドラムを ${el.textContent} に変更。`); }));
+  $('#random').addEventListener('click', () => { state.seed = (state.seed + 0x9e3779b9) >>> 0; state.bass = Q.newRiff(state.seed); changed(); patternMessage('新しいベースが出ました。'); });
   $('#mutate').addEventListener('click', () => {
     bassRandomizer = !bassRandomizer;
-    if (bassRandomizer) state.manual.bassPattern = false;
     randomizerStartBar = running ? Math.ceil(tick / 16) : 0;
     changed();
     patternMessage(bassRandomizer ? 'BASS RAND をオン。4周ごとに新しいリフ。' : 'BASS RAND をオフ。');
@@ -507,7 +502,6 @@
     state.seed = (state.seed + 0x9e3779b9) >>> 0;
     state.drums = Q.newBeat(state.seed);
     state.preset = 'custom';
-    for (const track of Q.TRACKS) { state.manual.drums[track] = true; liveEnabled[track] = state.enabled[track]; }
     changed(); patternMessage('新しいドラムが出ました。');
   });
   $('#calm').addEventListener('click', () => {
@@ -527,7 +521,10 @@
   motion.addEventListener('change', e => { if (e.matches) { state.lights = false; changed(); } });
   $('#save').addEventListener('click', async () => {
     const button = $('#save'); button.disabled = true;
-    const snapshot = Q.clone(state); say('4小節の WAV を作成しています…');
+    const snapshot = Q.clone(state);
+    snapshot.bass = Q.layeredBass(state.bass, state.bassAdds, autoJam);
+    snapshot.drums = Q.layeredDrums(state.drums, autoJam);
+    say('4小節の WAV を作成しています…');
     try {
       const blob = await Q.renderWav(snapshot, 4);
       const url = URL.createObjectURL(blob), link = document.createElement('a');

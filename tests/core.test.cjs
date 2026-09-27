@@ -117,12 +117,16 @@ test('AUTO MODE uses a four-bar drum phrase and moves every sound knob within bo
   assert.deepEqual(base, Q.DEFAULT_KNOBS);
 });
 
-test('AUTO MODE modulation remains subtle even when CHAOS is high', () => {
+test('AUTO MODE moves every knob subtly around manually chosen centers', () => {
   const base = { ...Q.DEFAULT_KNOBS };
-  for (let tick = 0; tick < 128; tick++) {
-    const knobs = Q.autoKnobs(base, tick, 303, 1);
-    for (const key of Object.keys(base)) assert.ok(Math.abs(knobs[key] - base[key]) <= 0.081, `${key} moved too far`);
-  }
+  const values = Array.from({ length: 128 }, (_, tick) => Q.autoKnobs(base, tick, 303, 1));
+  const travel = Object.fromEntries(Object.keys(base).map(key => [key,
+    Math.max(...values.map(knobs => Math.abs(knobs[key] - base[key])))]));
+  assert.ok(travel.cutoff > 0.04 && travel.cutoff <= 0.081);
+  assert.ok(travel.slide > 0.04 && travel.slide <= 0.071);
+  assert.ok(travel.resonance < 0.05);
+  assert.ok(travel.bite < 0.06);
+  assert.ok(travel.drive < 0.03);
 });
 
 test('manual animal and SFX pads provide distinct bounded one-shot sounds', () => {
@@ -187,18 +191,16 @@ test('factory creates isolated, valid state', () => {
   assert.equal(b.bass[0].note, 36); assert.equal(b.knobs.cutoff, 0.34); assert.equal(b.drums.kick[0], true);
   assert.deepEqual(Q.normalize(b), b);
 });
-test('demo defaults and manual AUTO MODE overrides survive normalization', () => {
+test('demo defaults survive normalization without manual override state', () => {
   const state = Q.initialState();
   assert.equal(state.groove, 'weird'); assert.equal(state.preset, 'four');
   assert.deepEqual(state.drums, Q.drumPattern('four'));
   assert.equal(state.metal, true); assert.equal(state.hook.enabled, true);
   assert.equal(state.arrangement, 'arcade'); assert.equal(state.vox.enabled, true); assert.equal(state.vox.level, 1);
   assert.equal(Q.autoBassRest(0, true), true); assert.equal(Q.autoBassRest(1, true), false);
-  state.manual.bass = true; state.manual.bassPattern = true;
-  state.manual.drums.kick = true; state.manual.knobs.cutoff = true;
-  assert.deepEqual(Q.normalize(Q.clone(state)).manual, state.manual);
-  const restored = Q.normalize({ version: 1, manual: { bass: 'true', drums: { kick: 1 }, knobs: { cutoff: null } } });
-  assert.deepEqual(restored.manual, Q.initialState().manual);
+  assert.deepEqual(Q.normalize(Q.clone(state)), state);
+  const restored = Q.normalize({ ...state, manual: { bass: true, bassPattern: true, drums: { kick: true }, knobs: { cutoff: true } } });
+  assert.deepEqual(restored, state);
 });
 test('beat gacha generates varied 16-step drums with a stable pulse and backbeat', () => {
   const beats = Array.from({ length: 24 }, (_, seed) => Q.newBeat(seed));
@@ -218,25 +220,35 @@ test('beat gacha generates varied 16-step drums with a stable pulse and backbeat
   const state = Q.initialState(); state.drums = beats[3]; state.preset = 'custom';
   assert.deepEqual(Q.normalize(state).drums, beats[3]);
 });
-test('manual bass, drum and knob changes override only their AUTO MODE lanes', () => {
+test('manual hits add to AUTO MODE without replacing its rhythm or bass rests', () => {
+  const state = Q.initialState();
+  const drums = Q.drumPattern('offbeat');
+  drums.kick[0] = false; drums.clap[4] = false;
+  const layered = Q.layeredDrums(drums, true);
+  assert.equal(layered.kick[0], true); assert.equal(layered.clap[4], true);
+  assert.equal(layered.hat[2], true);
+  assert.deepEqual(Q.layeredDrums(drums, false), drums);
+  assert.equal(drums.kick[0], false);
+  state.bass[3].on = false; state.bassAdds[3] = true;
+  const bass = Q.layeredBass(state.bass, state.bassAdds, true);
+  assert.equal(bass[3].on, true); assert.equal(state.bass[3].on, false);
+  assert.equal(Q.layeredBass(state.bass, state.bassAdds, false)[3].on, false);
+  assert.deepEqual(Q.normalize(Q.clone(state)).bassAdds, state.bassAdds);
+  assert.equal(Q.performanceEnabled(state, 303, 0, 0, true).bass, false);
+  assert.equal(Q.performanceEnabled(state, 303, 0, 1, true).bass, true);
+  assert.deepEqual(Q.performanceEnabled(state, 303, 0, 0, false), state.enabled);
+});
+test('AUTO MODE keeps moving after the base controls are edited', () => {
   const state = Q.initialState();
   assert.equal(Q.performanceEnabled(state, 303, 0, 0, true).bass, false);
-  state.manual.bass = true;
-  assert.equal(Q.performanceEnabled(state, 303, 0, 0, true).bass, true);
   const seed = Array.from({ length: 100 }, (_, value) => value).find(value => Object.values(Q.autoTrackMask(value, 2)).includes(false));
   const mutedTrack = Q.TRACKS.find(track => !Q.autoTrackMask(seed, 2)[track]);
   assert.equal(Q.performanceEnabled(state, seed, 2, 2, true)[mutedTrack], false);
-  state.manual.drums[mutedTrack] = true;
-  assert.equal(Q.performanceEnabled(state, seed, 2, 2, true)[mutedTrack], true);
   assert.deepEqual(Q.performanceEnabled(state, seed, 2, 2, false), state.enabled);
-  const base = { ...state.knobs };
-  const moving = Q.performanceKnobs(base, 5, 303, 1, true, state.manual.knobs);
-  state.manual.knobs.cutoff = true;
-  const overridden = Q.performanceKnobs(base, 5, 303, 1, true, state.manual.knobs);
-  assert.equal(overridden.cutoff, base.cutoff);
-  assert.equal(overridden.drive, moving.drive);
-  assert.notDeepEqual(overridden, moving);
-  assert.deepEqual(Q.performanceKnobs(base, 5, 303, 1, false, state.manual.knobs), base);
+  state.knobs.cutoff = 0.6;
+  const moving = Q.performanceKnobs(state.knobs, 5, 303, 0.65, true);
+  assert.notEqual(moving.cutoff, state.knobs.cutoff);
+  assert.deepEqual(Q.performanceKnobs(state.knobs, 5, 303, 0.65, false), state.knobs);
 });
 test('invalid or future-version storage falls back safely', () => {
   for (const value of [null, undefined, '', [], { version: 2 }]) assert.deepEqual(Q.normalize(value), Q.initialState());
