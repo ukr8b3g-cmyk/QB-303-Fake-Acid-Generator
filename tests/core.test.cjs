@@ -115,6 +115,43 @@ test('AUTO MODE uses a four-bar drum phrase and moves every sound knob within bo
   assert.deepEqual(base, Q.DEFAULT_KNOBS);
 });
 
+test('AUTO MODE modulation remains subtle even when CHAOS is high', () => {
+  const base = { ...Q.DEFAULT_KNOBS };
+  for (let tick = 0; tick < 128; tick++) {
+    const knobs = Q.autoKnobs(base, tick, 303, 1);
+    for (const key of Object.keys(base)) assert.ok(Math.abs(knobs[key] - base[key]) <= 0.081, `${key} moved too far`);
+  }
+});
+
+test('manual animal and SFX pads provide distinct bounded one-shot sounds', () => {
+  assert.equal(Q.PAD_VOICES.length, 10);
+  assert.equal(Q.PAD_SFX.length, 10);
+  assert.ok(Q.PAD_VOICES.some(item => item.name.includes('カラス')));
+  assert.ok(Q.PAD_VOICES.some(item => item.name.includes('ニワトリ')));
+  assert.ok(Q.PAD_VOICES.some(item => item.name.includes('牛')));
+  assert.ok(Q.PAD_VOICES.some(item => item.name.includes('男性')));
+  assert.ok(Q.PAD_VOICES.some(item => item.name.includes('女性')));
+  assert.ok(Q.PAD_SFX.some(item => item.name.includes('ブレーキ')));
+  const signatures = new Set();
+  for (const [kind, items] of [['voice', Q.PAD_VOICES], ['sfx', Q.PAD_SFX]]) {
+    for (let index = 0; index < items.length; index++) {
+      const sound = Q.makePadSound(kind, index, 8000);
+      assert.equal(sound.length, Math.ceil(items[index].seconds * 8000));
+      assert.ok(sound.every(value => Number.isFinite(value) && Math.abs(value) <= 0.78));
+      assert.ok(sound.some(value => Math.abs(value) > 0.05), `${kind} ${index} is silent`);
+      signatures.add(`${sound.length}:${Array.from(sound.slice(200, 400), value => Math.round(value * 100)).join(',')}`);
+    }
+  }
+  assert.equal(signatures.size, 20);
+  const brake = Q.makePadSound('sfx', 0, 8000);
+  const energy = (from, to) => brake.slice(Math.floor(from * 8000), Math.floor(to * 8000)).reduce((sum, value) => sum + value * value, 0);
+  assert.ok(energy(0.08, 0.5) > 1, 'brake screech should be audible');
+  assert.ok(energy(0.56, 0.7) > 1, 'brake impact should be audible');
+  assert.throws(() => Q.makePadSound('sfx', 10, 8000), /Invalid pad/);
+  assert.throws(() => Q.makePadSound('voice', 0, 0), /Invalid pad/);
+  assert.equal(typeof Q.Engine.prototype.playPad, 'function');
+});
+
 test('AUTO MODE has a one-bar intro, four-on/two-off phrases and an occasional four-bar break', () => {
   const rests = Array.from({ length: 41 }, (_, bar) => Q.autoBassRest(bar, true));
   const expected = [true, ...Array(4).fill(false), ...Array(2).fill(true), ...Array(4).fill(false), ...Array(2).fill(true), ...Array(4).fill(false), ...Array(4).fill(true)];

@@ -22,6 +22,7 @@
   let liveHookVariation = state.hook.variation;
   let speedWander = false, rushQueued = false, rushBar = -1, liveBpm = state.bpm;
   let jamSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+  const lastPadSound = { voice: -1, sfx: -1 };
   const pulses = new Map();
   const canvas = $('#scope'), brush = canvas.getContext('2d');
   const wave = new Float32Array(512);
@@ -299,7 +300,7 @@
           if (phrasePhase === 0) autoPhraseSeed = jamSeed;
           if (rushQueued) { rushBar = 0; rushQueued = false; }
           else if (rushBar >= 0) rushBar = rushBar < 3 ? rushBar + 1 : -1;
-          activeJam = (autoJam && phrasePhase === 3) || madQueued || rushBar >= 0 ? Q.jamPlan(jamSeed, jamAmount, madQueued, state.metal) : null;
+          activeJam = madQueued || rushBar >= 0 ? Q.jamPlan(jamSeed, jamAmount, madQueued, state.metal) : null;
           if (rushBar >= 0 && !madQueued) activeJam = { ...activeJam, strength: 1, move: [state.metal ? 6 : 3, state.metal ? 7 : 2, 0, 5][rushBar] };
           madQueued = false;
           const bassPlan = Q.bassRandomizerPlan(barNumber, randomizerStartBar);
@@ -431,7 +432,33 @@
     } catch (error) { say(error.message || '試聴できませんでした。'); }
   }
 
+  async function strikeSoundPad(kind, button) {
+    const sounds = kind === 'voice' ? Q.PAD_VOICES : Q.PAD_SFX;
+    const previous = lastPadSound[kind];
+    let index = previous < 0 && kind === 'sfx' ? 0 : Math.floor(Math.random() * (sounds.length - (previous < 0 ? 0 : 1)));
+    if (previous >= 0 && index >= previous) index++;
+    const token = startToken;
+    try {
+      const ctx = audioContext(); await resume(ctx);
+      if (token !== startToken || document.hidden) return;
+      if (!running && !starting && !previewEngine) previewEngine = new Q.Engine(ctx, state);
+      const active = running ? engine : !starting ? previewEngine : null;
+      if (!running) active?.update(state);
+      if (!active?.playPad(kind, index, ctx.currentTime + 0.01)) return;
+      lastPadSound[kind] = index;
+      button.querySelector('small').textContent = sounds[index].name;
+      pulse(button, 360); ensureFrame();
+      if (!running) {
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(() => { clearPreview(); drawScope(null); }, Math.max(1250, sounds[index].seconds * 1000 + 200));
+      }
+      say(`${sounds[index].name} を鳴らしました。`);
+    } catch (error) { say(error.message || '効果音を鳴らせませんでした。'); }
+  }
+
   $('#play').addEventListener('click', () => running ? stop() : start());
+  $('#animal-pad').addEventListener('click', e => strikeSoundPad('voice', e.currentTarget));
+  $('#sfx-pad').addEventListener('click', e => strikeSoundPad('sfx', e.currentTarget));
   $('#metal').addEventListener('click', () => { state.metal = !state.metal; changed(); say(state.metal ? 'METAL! カンカンを追加。AUTO MODE でシャカシャカやキュッキュッも。' : '金属音をオフ。'); });
   $('#hook').addEventListener('click', () => { state.hook.enabled = !state.hook.enabled; changed(); patternMessage(state.hook.enabled ? 'HOOK AUTO を追加。AUTO MODE 中は4小節ごとにフレーズを選びます。' : 'HOOK をオフ。'); });
   $('#arrange').addEventListener('click', () => { state.arrangement = Q.ARRANGEMENTS[(Q.ARRANGEMENTS.indexOf(state.arrangement) + 1) % Q.ARRANGEMENTS.length]; changed(); patternMessage(state.arrangement === 'off' ? 'SYNTH ARRANGE をオフ。' : `SYNTH ARRANGE: ${state.arrangement.toUpperCase()}。2小節のシンセフレーズを重ねます。`); });

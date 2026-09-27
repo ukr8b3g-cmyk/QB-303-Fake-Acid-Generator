@@ -115,6 +115,79 @@
     return ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'][note % 12] + (Math.floor(note / 12) - 1);
   }
   const frequency = note => 440 * Math.pow(2, (note - 69) / 12);
+  // Hand-played one-shots. The voice syllables are synthetic impressions, not recordings or speech.
+  const PAD_VOICES = [
+    { name: 'カラス カー', seconds: 0.68, parts: [[0, 0.68, 360, 220, 0, 0.5]] },
+    { name: 'ニワトリ コケコッコー', seconds: 1.0, parts: [[0, 0.13, 390, 480, 1, 0.22], [0.16, 0.29, 440, 540, 2, 0.18], [0.32, 0.47, 470, 400, 1, 0.3], [0.5, 0.99, 420, 620, 0, 0.28]] },
+    { name: '牛 モー', seconds: 0.88, parts: [[0, 0.87, 105, 85, 1, 0.08]] },
+    { name: '猫 ニャー', seconds: 0.64, parts: [[0, 0.63, 370, 530, 2, 0.12]] },
+    { name: '犬 ワンワン', seconds: 0.54, parts: [[0, 0.19, 190, 110, 0, 0.55], [0.28, 0.52, 210, 100, 0, 0.55]] },
+    { name: 'アヒル ガー', seconds: 0.48, parts: [[0, 0.2, 330, 230, 2, 0.42], [0.23, 0.47, 310, 200, 2, 0.42]] },
+    { name: '羊 メー', seconds: 0.72, parts: [[0, 0.71, 230, 180, 2, 0.16]] },
+    { name: 'カエル ケロ', seconds: 0.52, parts: [[0, 0.2, 125, 90, 1, 0.22], [0.28, 0.5, 140, 95, 1, 0.22]] },
+    { name: '男性 はい風', seconds: 0.48, parts: [[0, 0.18, 145, 170, 0, 0.1], [0.2, 0.47, 170, 135, 3, 0.03]] },
+    { name: '女性 イエス風', seconds: 0.55, parts: [[0, 0.17, 265, 310, 3, 0.08], [0.2, 0.53, 300, 240, 2, 0.07]] }
+  ];
+  const PAD_SFX = [
+    { name: '急ブレーキ キュー・ドン', seconds: 0.78 },
+    { name: 'ビリッ', seconds: 0.3 },
+    { name: 'ボヨン', seconds: 0.62 },
+    { name: 'ポコポコ', seconds: 0.52 },
+    { name: 'ポン！', seconds: 0.24 },
+    { name: 'サイレン', seconds: 0.72 },
+    { name: 'ピューン', seconds: 0.46 },
+    { name: 'キラン', seconds: 0.48 },
+    { name: 'シュワッ', seconds: 0.57 },
+    { name: 'キュルル', seconds: 0.56 }
+  ];
+  function makePadSound(kind, index, sampleRate) {
+    const items = kind === 'voice' ? PAD_VOICES : kind === 'sfx' ? PAD_SFX : null;
+    if (!items || !Number.isInteger(index) || index < 0 || index >= items.length || !Number.isFinite(sampleRate) || sampleRate < 8000 || sampleRate > 192000) throw new Error('Invalid pad sound');
+    const patch = items[index], data = new Float32Array(Math.ceil(patch.seconds * sampleRate));
+    const tau = Math.PI * 2;
+    let phase = 0, seed = (index + 1) * (kind === 'voice' ? 7829 : 12011);
+    const vowelWeights = [[1, 0.78, 0.5, 0.28], [1, 0.57, 0.2, 0.08], [0.8, 0.3, 0.62, 0.27], [0.75, 0.18, 0.55, 0.35]];
+    for (let i = 0; i < data.length; i++) {
+      const t = i / sampleRate, u = t / patch.seconds;
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const noise = seed / 0x80000000 - 1;
+      let sample = 0;
+      if (kind === 'voice') {
+        const part = patch.parts.find(p => t >= p[0] && t < p[1]);
+        if (part) {
+          const progress = (t - part[0]) / (part[1] - part[0]);
+          const vibrato = (index === 6 ? 0.045 : 0.012) * Math.sin(tau * (index === 6 ? 11 : 6) * t);
+          phase += tau * (part[2] + (part[3] - part[2]) * progress) * (1 + vibrato) / sampleRate;
+          const weights = vowelWeights[part[4]], envelope = Math.pow(Math.sin(Math.PI * progress), 0.65);
+          const tone = weights.reduce((sum, weight, harmonic) => sum + weight * Math.sin(phase * (harmonic + 1)) / (1 + harmonic * 0.35), 0);
+          sample = envelope * (tone * 0.32 + noise * part[5] * 0.25);
+        }
+      } else {
+        let hz = 220, envelope = Math.sin(Math.PI * u), grit = 0;
+        switch (index) {
+          case 0: // Tyre screech followed by a low thud.
+            if (t < 0.55) { hz = 1900 - 900 * t + 240 * Math.sin(tau * 14 * t); envelope = Math.min(1, t / 0.03) * Math.min(1, (0.55 - t) / 0.06); grit = 0.42; }
+            else { const hit = t - 0.55; hz = 110 * Math.exp(-8 * hit) + 42; envelope = Math.exp(-17 * hit); grit = 0.38; }
+            break;
+          case 1: hz = 2600 * Math.exp(-4 * u) + 90; envelope = Math.exp(-6 * u); grit = 0.22; break;
+          case 2: hz = 190 + 115 * Math.exp(-3 * u) * Math.cos(tau * 7 * t); envelope = Math.exp(-2.3 * u); break;
+          case 3: hz = 200 + 750 * (u % 0.32); envelope = Math.pow(Math.sin(Math.PI * (u % 0.32) / 0.32), 1.3) * (1 - u * 0.4); break;
+          case 4: hz = 280 * Math.exp(-7 * u) + 50; envelope = Math.exp(-15 * u); grit = 0.3; break;
+          case 5: hz = 600 + 350 * Math.sin(tau * 2.8 * t); envelope = Math.min(1, t / 0.035) * Math.min(1, (patch.seconds - t) / 0.08); break;
+          case 6: hz = 1700 * (1 - u) * (1 - u) + 80; envelope = 1 - u; grit = 0.08; break;
+          case 7: hz = 850 + 650 * Math.sin(tau * 16 * t); envelope = Math.exp(-3 * u); break;
+          case 8: hz = 140 + 1800 * u * u; envelope = Math.sin(Math.PI * u); grit = 0.3; break;
+          case 9: hz = 1700 * (1 - u) + 90; envelope = Math.sin(Math.PI * u) * (0.6 + 0.4 * Math.sin(tau * 18 * t)); grit = 0.2; break;
+        }
+        phase += tau * Math.max(30, hz) / sampleRate;
+        const thud = index === 0 && t >= 0.55;
+        sample = envelope * (Math.sin(phase) * (thud ? 0.55 : 0.36) + Math.sin(phase * 2.03) * 0.12 + noise * grit * 0.42);
+      }
+      const edge = Math.max(0, Math.min(1, t / 0.004, (patch.seconds - t) / 0.014));
+      data[i] = clamp(sample * edge, -0.78, 0.78);
+    }
+    return data;
+  }
   const JAM_MOVES = ['SCRATCH!', 'WOBBLE', 'STUTTER', 'CLIMB', 'BREAK', 'ACID RUN', 'CLANG CLANG', 'SHAKA SHAKA', 'CHIRP CHIRP'];
   function performanceBpm(base, seed, wander = false, rushBar = -1) {
     const factor = rushBar >= 0 && rushBar < 4 ? [1.12, 1.28, 1.5, 1][rushBar] : wander ? [0.85, 1, 1.12, 1.25][Math.floor(random(seed)() * 4)] : 1;
@@ -151,7 +224,8 @@
     const rng = random(seed ^ 0x4b4e4f42);
     const motion = clamp(amount, 0, 1);
     const rates = { cutoff: 32, resonance: 48, bite: 24, slide: 64, drive: 64 };
-    const depths = { cutoff: 0.22, resonance: 0.16, bite: 0.18, slide: 0.20, drive: 0.13 };
+    // AUTO MODE keeps the melody clear. Strong squelch and scratch remain manual gestures.
+    const depths = { cutoff: 0.08, resonance: 0.04, bite: 0.05, slide: 0.07, drive: 0.025 };
     return Object.fromEntries(Object.keys(DEFAULT_KNOBS).map(key => [key,
       clamp(base[key] + Math.sin(tick * 2 * Math.PI / rates[key] + rng() * 2 * Math.PI) * depths[key] * motion)]));
   }
@@ -213,7 +287,7 @@
       this.analyser = node('createAnalyser');
       this.analyser.fftSize = 512;
       this.mix.connect(this.highpass).connect(comp).connect(ceiling).connect(this.master).connect(this.analyser).connect(context.destination);
-      this.buses = Object.fromEntries(['bass', ...TRACKS, 'metal', 'hook', 'synth', 'vox', 'scratch'].map(track => {
+      this.buses = Object.fromEntries(['bass', ...TRACKS, 'metal', 'hook', 'synth', 'vox', 'scratch', 'pad'].map(track => {
         const bus = node('createGain'); bus.connect(this.mix); return [track, bus];
       }));
       this.osc = node('createOscillator');
@@ -256,6 +330,7 @@
       set(this.buses.synth.gain, state.arrangement === 'off' ? 0 : 0.55);
       set(this.buses.vox.gain, state.vox.enabled ? state.vox.level : 0);
       set(this.buses.scratch.gain, 0.42);
+      set(this.buses.pad.gain, 0.7);
       if (this.osc.type !== state.waveform) this.osc.type = state.waveform;
     }
     note(event, time, tickDuration, knobs) {
@@ -424,6 +499,18 @@
       source.onended = () => { this.sources.delete(source); for (const node of [source, filter, amp]) { node.disconnect(); this.nodes.delete(node); } };
       source.start(time); source.stop(time + length + 0.005);
     }
+    playPad(kind, index, time = this.ctx.currentTime) {
+      if (this.disposed) return false;
+      const samples = makePadSound(kind, index, this.ctx.sampleRate);
+      const buffer = this.ctx.createBuffer(1, samples.length, this.ctx.sampleRate);
+      buffer.copyToChannel(samples, 0);
+      const source = this.keep(this.ctx.createBufferSource()); source.buffer = buffer;
+      source.connect(this.buses.pad);
+      this.sources.add(source);
+      source.onended = () => { this.sources.delete(source); source.disconnect(); this.nodes.delete(source); };
+      source.start(time);
+      return true;
+    }
     voxHit(event, time) {
       const ctx = this.ctx, nodes = [], sources = [];
       const keep = node => { this.keep(node); nodes.push(node); return node; };
@@ -549,7 +636,7 @@
       return new Blob([encodeWav(channels, sr)], { type: 'audio/wav' });
     } finally { engine.dispose(); }
   }
-  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, performanceBpm, autoTrackMask, autoBassRest, bassRandomizerPlan, autoKnobs, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
+  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, PAD_VOICES, PAD_SFX, makePadSound, performanceBpm, autoTrackMask, autoBassRest, bassRandomizerPlan, autoKnobs, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.QB = api;
 })(typeof window !== 'undefined' ? window : globalThis);

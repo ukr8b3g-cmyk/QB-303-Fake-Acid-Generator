@@ -132,5 +132,13 @@
 .jam-controls #rush.queued{background:#ffad61;color:#2e1a0d;border-color:#ffad61;outline:2px dashed var(--lime);outline-offset:2px}
 .jam-controls #rush.active{background:var(--pink);color:#291621;border-color:var(--pink);box-shadow:0 0 12px #ff89c688}
 .mutate[aria-pressed=true]{background:#8cd8cd;box-shadow:0 3px 0 #40766e}
+
+/* Momentary sound pads share the existing action row; neither runs automatically. */
+@media(min-width:781px){.action-deck{grid-template-columns:1fr 1fr 1.25fr 1fr 1fr .8fr .9fr}}
+.action-deck .one-shot{background:#364438;color:#e8f4df;border:1px solid #829674;box-shadow:0 2px 0 #0b1007}
+.action-deck .animal-pad .action-icon{color:#8cd8cd}
+.action-deck .sfx-pad .action-icon{color:#ffad61}
+.action-deck .one-shot.hit{outline:2px solid var(--lime);outline-offset:1px;background:#58693e}
+@media(max-width:780px){.action-deck #animal-pad{grid-column:1;grid-row:2}.action-deck #sfx-pad{grid-column:2;grid-row:2}.action-deck #calm{grid-column:3;grid-row:2}.action-deck #save{grid-column:1/4;grid-row:3;text-align:center}}
 .track-toggle.auto-rest{opacity:.45;border-style:dashed}
 .transport .bass-toggle.auto-rest{background:#534450;color:#ffd3ea;border-style:dashed;text-decoration:none;opacity:1}
