@@ -115,9 +115,16 @@ test('AUTO MODE uses a four-bar drum phrase and moves every sound knob within bo
   assert.deepEqual(base, Q.DEFAULT_KNOBS);
 });
 
-test('AUTO MODE rests bass for one 16-step loop, then plays for one loop; BASS RAND refreshes every four', () => {
-  assert.deepEqual(Array.from({ length: 8 }, (_, bar) => Q.autoBassRest(bar, true)), [true, false, true, false, true, false, true, false]);
-  assert.deepEqual(Array.from({ length: 8 }, (_, bar) => Q.autoBassRest(bar, false)), Array(8).fill(false));
+test('AUTO MODE has a one-bar intro, four-on/two-off phrases and an occasional four-bar break', () => {
+  const rests = Array.from({ length: 41 }, (_, bar) => Q.autoBassRest(bar, true));
+  const expected = [true, ...Array(4).fill(false), ...Array(2).fill(true), ...Array(4).fill(false), ...Array(2).fill(true), ...Array(4).fill(false), ...Array(4).fill(true)];
+  assert.deepEqual(rests.slice(0, 21), expected);
+  assert.deepEqual(rests.slice(21), expected.slice(1));
+  assert.deepEqual(Array.from({ length: 41 }, (_, bar) => Q.autoBassRest(bar, false)), Array(41).fill(false));
+  assert.equal(Q.autoBassRest(-1, true), false);
+});
+
+test('BASS RAND refreshes every four loops independently of AUTO MODE', () => {
   assert.deepEqual(Q.bassRandomizerPlan(4, 5), { refresh: false });
   const cycle = Array.from({ length: 9 }, (_, bar) => Q.bassRandomizerPlan(bar + 5, 5));
   assert.deepEqual(cycle.map(plan => plan.refresh), [false, false, false, false, true, false, false, false, true]);

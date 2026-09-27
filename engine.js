@@ -137,7 +137,11 @@
     return mask;
   }
   function autoBassRest(bar, autoMode) {
-    return Boolean(autoMode) && ((bar % 2) + 2) % 2 === 0;
+    if (!autoMode || bar < 0) return false;
+    if (bar === 0) return true;
+    // After the one-bar intro: 4 on / 2 off / 4 on / 2 off / 4 on / 4 off.
+    const phraseBar = (bar - 1) % 20;
+    return (phraseBar >= 4 && phraseBar < 6) || (phraseBar >= 10 && phraseBar < 12) || phraseBar >= 16;
   }
   function bassRandomizerPlan(bar, startBar) {
     const elapsed = bar - startBar;

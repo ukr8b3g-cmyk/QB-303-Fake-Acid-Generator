@@ -441,7 +441,7 @@
   $('#rush').addEventListener('click', () => { rushQueued = true; syncRush(); if (!running) start(); else say('RUSH を予約。次の小節から4小節で加速して戻ります。'); });
   $('#auto-jam').addEventListener('click', () => {
     autoJam = !autoJam; syncView();
-    patternMessage(autoJam ? 'AUTO MODE! ベースは16ステップ休み、次の16ステップで戻ります。' : 'AUTO MODE をオフ。ベースは手動のON/OFFに戻ります。');
+    patternMessage(autoJam ? 'AUTO MODE! 最初の1周はベースが休み、その後は4周演奏・2周休みを基本に展開します。' : 'AUTO MODE をオフ。ベースは手動のON/OFFに戻ります。');
     if (!running) $('#jam-now').textContent = autoJam ? 'READY TO JAM' : 'YOUR HANDS. YOUR NOISE.';
   });
   $('#chaos').addEventListener('input', e => { jamAmount = Number(e.target.value) / 100; syncView(); });
