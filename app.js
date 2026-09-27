@@ -181,6 +181,8 @@
       $$(`[data-${attribute}]`).forEach(el => el.setAttribute('aria-pressed', String(el.dataset[attribute] === value)));
     }
     $$('[data-track]').forEach(el => el.setAttribute('aria-pressed', String(state.enabled[el.dataset.track])));
+    $('#bass-toggle-state').textContent = state.enabled.bass ? 'ON' : 'OFF';
+    $('#bass-toggle').setAttribute('aria-label', state.enabled.bass ? 'ベースをオフにする' : 'ベースをオンにする');
     bassPads.forEach((pad, i) => {
       const step = state.bass[i]; pad.setAttribute('aria-pressed', String(step.on));
       pad.setAttribute('aria-label', `ベース ${i + 1}: ${Q.noteName(step.note)}${step.accent ? ' アクセント' : ''}${step.slide ? ' スライド' : ''}`);

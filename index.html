@@ -27,8 +27,8 @@
         <div><div class="model-row"><h1>QB-303<span class="model-dot" aria-hidden="true">↯</span></h1><span class="version">V1.0</span></div><p class="subtitle">FAKE ACID GENERATOR</p></div>
         <div class="fake-sticker" aria-label="100 percent fake, 100 percent fun">100% FAKE.<br><strong>100% FUN.</strong><span>NOT A SERIOUS INSTRUMENT</span></div>
       </header>
-      <section class="transport" aria-label="再生と音量">
-        <button id="play" class="play-button" aria-pressed="false"><span id="play-icon" aria-hidden="true">▶</span><span id="play-label">LET'S GO</span></button>
+      <section class="transport" aria-label="再生・ベース・音量">
+        <div class="transport-actions"><button id="play" class="play-button" aria-pressed="false"><span id="play-icon" aria-hidden="true">▶</span><span id="play-label">LET'S GO</span></button><button id="bass-toggle" class="track-toggle bass-toggle" data-track="bass" aria-pressed="true" aria-label="ベースをオフにする"><i class="led track-led" data-hit="bass"></i><span>BASS<small id="bass-toggle-state">ON</small></span></button></div>
         <div class="tempo"><label for="bpm">TEMPO <span>BPM</span></label><div class="tempo-number"><button id="slower" class="nudge" aria-label="テンポを下げる">−</button><input id="bpm" type="number" min="60" max="180" step="1" value="128" inputmode="numeric" aria-label="テンポ BPM"><button id="faster" class="nudge" aria-label="テンポを上げる">＋</button></div><input id="bpm-slider" type="range" min="60" max="180" step="1" value="128" aria-label="テンポスライダー BPM" title="左右にドラッグして60〜180 BPMを調整"></div>
         <div class="scope-display"><div class="scope-caption"><span><i id="beat-led" class="led"></i> LIVE NONSENSE</span><span id="step-counter">-- / 16</span></div><canvas id="scope" width="520" height="100" aria-label="音の波形"></canvas><span class="scope-idle" id="scope-idle">PRESS PLAY. GET WEIRD.</span></div>
         <div class="volume"><label for="volume">VOLUME <output id="volume-value">42</output></label><input id="volume" type="range" min="0" max="100" value="42"><span>まずは小さな音で。</span></div>
@@ -60,7 +60,7 @@
       </section>
       <div class="sequencer-deck">
         <section class="bass-section" aria-label="ベースパターン">
-          <div class="section-heading"><h2><span class="section-index">02</span> LITTLE BASS, BIG MOUTH</h2><button class="track-toggle" data-track="bass" aria-pressed="true" aria-label="ベースの有効・無効"><i class="led track-led" data-hit="bass"></i> BASS</button></div>
+          <div class="section-heading"><h2><span class="section-index">02</span> LITTLE BASS, BIG MOUTH</h2></div>
           <div id="bass-grid" class="bass-grid" role="group" aria-label="8ステップのベース"></div>
           <div class="pattern-legend"><span><i class="legend-dot accent-dot"></i>ACCENT <i class="legend-slide">↗</i>SLIDE</span><span>パッドで音を ON / OFF</span></div>
           <div class="groove-row"><span class="control-caption">SYNCOPATION<small>ベースのノリをずらす</small></span><div class="groove-switch" role="group" aria-label="シンコペーション"><button data-groove="straight" aria-pressed="true">STRAIGHT</button><button data-groove="bounce" aria-pressed="false">BOUNCE</button><button data-groove="weird" aria-pressed="false">WEIRD</button></div></div>
