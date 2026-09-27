@@ -12,9 +12,9 @@ ComfyUI・VST・AIモデル・アカウント・マイクは使いません。
 
 ## ブラウザで試すデモ
 
-README の画面内では JavaScript と音声を直接実行できません。GitHub Pages を有効にすると、専用ページを開いてそのままノブやドラムを操作できます。音は **LET'S GO** を押してから鳴ります。
+README の画面内では JavaScript と音声を直接実行できません。下のデモページを開くと、そのままノブやドラムを操作できます。音は **LET'S GO** を押してから鳴ります。
 
-現在、このリポジトリの GitHub Pages は未有効です。有効化後のデモ URL は `https://ukr8b3g-cmyk.github.io/QB-303-Fake-Acid-Generator/` です。設定方法は末尾の「GitHub Pages で公開する場合」を参照してください。
+**[ブラウザでデモを開く](https://ukr8b3g-cmyk.github.io/QB-303-Fake-Acid-Generator/)**
 
 ## 遊び方
 
@@ -130,10 +130,9 @@ python tests/browser_smoke.py
 初期検証結果は [TEST_REPORT.md](TEST_REPORT.md) に記載しています。
 Windows / Edge 実機、スマートフォン実機、スピーカーでの聴感、`file://` と HTTP での起動確認は未実施です。
 
-## GitHub Pages で公開する場合
+## GitHub Pages の公開設定
 
-公開用のビルドは不要です。リポジトリの **Settings → Pages → Deploy from a branch → main / (root)** を選択して保存します。公開後は上記のデモ URL にアクセスし、README の先頭にリンクを設置できます。
-本リポジトリへのソース追加だけでは、Pages の公開設定は変更しません。
+公開用のビルドは不要です。**Settings → Pages → Deploy from a branch → main / (root)** で公開しています。
 
 参考：
 [GitHub Pages の公開元設定](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site) / 
