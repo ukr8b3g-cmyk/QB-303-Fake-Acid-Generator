@@ -45,7 +45,7 @@ test('jam is deterministic, varied and cannot overwrite the source pattern or co
   }
   assert.equal(moves.size, 6); assert.deepEqual(state, before);
   for (let i = 0; i < 16; i++) {
-    const { hook, vox, ...base } = Q.jamEvent(state, i, null);
+    const { hook, synth, vox, ...base } = Q.jamEvent(state, i, null);
     assert.deepEqual(base, Q.eventsAt(state, i));
   }
 });
@@ -78,6 +78,24 @@ test('ten HOOK phrases are distinct and repeat over two bars', () => {
   }
   assert.equal(signatures.size, 10);
   assert.equal(Q.normalize({ ...state, hook: { enabled: true, variation: 999 } }).hook.variation, 9);
+});
+
+test('synth arrangements have distinct two-bar counterlines and persist', () => {
+  const state = Q.initialState(), signatures = new Set();
+  assert.deepEqual(Q.ARRANGEMENTS, ['off', 'parade', 'night', 'arcade']);
+  assert.equal(Q.jamEvent(state, 0, null).synth, null);
+  for (const arrangement of Q.ARRANGEMENTS.slice(1)) {
+    state.arrangement = arrangement;
+    const phrase = Array.from({ length: 32 }, (_, tick) => Q.jamEvent(state, tick, null).synth?.note ?? null);
+    assert.ok(phrase.filter(Boolean).length >= 8);
+    assert.deepEqual(phrase, Array.from({ length: 32 }, (_, tick) => Q.jamEvent(state, tick + 32, null).synth?.note ?? null));
+    signatures.add(JSON.stringify(phrase));
+    assert.equal(Q.normalize(Q.clone(state)).arrangement, arrangement);
+  }
+  assert.equal(signatures.size, 3);
+  assert.equal(Q.normalize({ ...state, arrangement: 'unknown' }).arrangement, 'off');
+  const broken = Q.jamEvent(state, 12, { ...Q.jamPlan(303), move: 4 });
+  assert.equal(broken.synth, null);
 });
 
 test('GO MAD forces scratch, stutters respect rests and breaks return on the last tick', () => {

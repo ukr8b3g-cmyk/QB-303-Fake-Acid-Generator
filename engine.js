@@ -25,6 +25,13 @@
     [[2, 34], [6, 31], [9, 27], [14, 24], [18, 27], [22, 31], [25, 34], [31, 36]]
   ];
   const HOOK_PATTERN_COUNT = HOOK_PATTERNS.length;
+  // Original two-bar synth-pop counterlines; deliberately unrelated to existing songs.
+  const ARRANGEMENTS = ['off', 'parade', 'night', 'arcade'];
+  const SYNTH_PATTERNS = {
+    parade: [[0, 24], [4, 28], [7, 31], [10, 36], [16, 31], [20, 28], [24, 26], [28, 24]],
+    night: [[2, 24], [5, 27], [9, 31], [13, 34], [18, 36], [22, 34], [26, 31], [29, 27]],
+    arcade: [[0, 24], [2, 31], [4, 36], [6, 31], [10, 29], [12, 36], [16, 34], [19, 31], [22, 27], [25, 31], [28, 36]]
+  };
   const clone = value => JSON.parse(JSON.stringify(value));
   function random(seed) {
     let a = seed >>> 0;
@@ -44,7 +51,7 @@
       version: 1, bpm: 128, volume: 0.42, waveform: 'sawtooth', groove: 'straight', preset: 'four',
       knobs: { ...DEFAULT_KNOBS }, seed: 303, lights: true,
       metal: false, enabled: { bass: true, kick: true, hat: true, clap: true, metal: true },
-      hook: { enabled: true, variation: 0 }, vox: { enabled: true, level: 0.35 },
+      hook: { enabled: true, variation: 0 }, arrangement: 'off', vox: { enabled: true, level: 0.35 },
       bass: [36, 36, 43, 39, 36, 46, 43, 39].map((note, i) => ({ note, on: i !== 3, accent: i === 0 || i === 5, slide: i === 1 || i === 6 })),
       drums: drumPattern()
     };
@@ -63,6 +70,7 @@
     if (typeof raw.metal === 'boolean') s.metal = raw.metal;
     if (typeof raw.hook?.enabled === 'boolean') s.hook.enabled = raw.hook.enabled;
     s.hook.variation = Math.round(number(raw.hook?.variation, s.hook.variation, 0, HOOK_PATTERN_COUNT - 1));
+    s.arrangement = ARRANGEMENTS.includes(raw.arrangement) ? raw.arrangement : 'off';
     if (typeof raw.vox?.enabled === 'boolean') s.vox.enabled = raw.vox.enabled;
     s.vox.level = number(raw.vox?.level, s.vox.level, 0, 1);
     for (const key of Object.keys(s.knobs)) s.knobs[key] = number(raw.knobs?.[key], s.knobs[key], 0, 1);
@@ -125,6 +133,8 @@
     const phrase = HOOK_PATTERNS[state.hook?.variation ?? 0] || HOOK_PATTERNS[0];
     const hookNote = state.hook?.enabled ? phrase.find(([at]) => at === ((tick % 32) + 32) % 32) : null;
     event.hook = hookNote ? { note: clamp(state.bass[0].note + hookNote[1], 36, 96), accent: step % 8 >= 6 } : null;
+    const synthNote = SYNTH_PATTERNS[state.arrangement]?.find(([at]) => at === ((tick % 32) + 32) % 32);
+    event.synth = synthNote ? { note: clamp(state.bass[0].note + synthNote[1], 36, 96), accent: step % 8 === 0, tone: state.arrangement } : null;
     const voxStep = ((tick % 128) + 128) % 128;
     event.vox = state.vox?.enabled && voxStep === 46 ? {
       vowel: (Math.floor(tick / 32) + state.hook.variation) % 3,
@@ -144,7 +154,7 @@
       const index = positions(state.groove).findLastIndex(p => p <= 8);
       event.bass = state.bass[index].on ? { ...state.bass[index], index, ticks: 1, nextOn: false, slide: false } : null;
     }
-    if (plan.move === 4 && step >= 12 && step < 15) { event.bass = null; event.drums = []; event.hook = null; event.vox = null; }
+    if (plan.move === 4 && step >= 12 && step < 15) { event.bass = null; event.drums = []; event.hook = null; event.synth = null; event.vox = null; }
     if (event.bass) {
       if (plan.move === 3) event.bass.note = clamp(event.bass.note + Math.floor(step / 4) * 3, 24, 72);
       if (plan.move === 5) { event.bass.accent = step % 4 === 0; event.bass.slide = step % 4 !== 0; }
@@ -175,7 +185,7 @@
       this.analyser = node('createAnalyser');
       this.analyser.fftSize = 512;
       this.mix.connect(this.highpass).connect(comp).connect(ceiling).connect(this.master).connect(this.analyser).connect(context.destination);
-      this.buses = Object.fromEntries(['bass', ...TRACKS, 'metal', 'hook', 'vox'].map(track => {
+      this.buses = Object.fromEntries(['bass', ...TRACKS, 'metal', 'hook', 'synth', 'vox'].map(track => {
         const bus = node('createGain'); bus.connect(this.mix); return [track, bus];
       }));
       this.osc = node('createOscillator');
@@ -215,6 +225,7 @@
       for (const track of ['bass', ...TRACKS]) set(this.buses[track].gain, state.enabled[track] ? 1 : 0);
       set(this.buses.metal.gain, state.metal && state.enabled.metal ? 1 : 0);
       set(this.buses.hook.gain, state.hook.enabled ? 0.7 : 0);
+      set(this.buses.synth.gain, state.arrangement === 'off' ? 0 : 0.55);
       set(this.buses.vox.gain, state.vox.enabled ? state.vox.level : 0);
       if (this.osc.type !== state.waveform) this.osc.type = state.waveform;
     }
@@ -340,21 +351,22 @@
         src.start(time); src.stop(time + length + 0.005);
       }
     }
-    hookHit(event, time, tickDuration) {
+    hookHit(event, time, tickDuration, bus = this.buses.hook) {
       const ctx = this.ctx;
-      const osc = this.keep(ctx.createOscillator()); osc.type = 'square';
-      const filter = this.keep(ctx.createBiquadFilter()); filter.type = 'lowpass'; filter.Q.value = 3;
+      const osc = this.keep(ctx.createOscillator());
+      osc.type = event.tone === 'night' ? 'triangle' : event.tone === 'arcade' ? 'sawtooth' : 'square';
+      const filter = this.keep(ctx.createBiquadFilter()); filter.type = 'lowpass'; filter.Q.value = event.tone ? 1.8 : 3;
       const amp = this.keep(ctx.createGain()); amp.gain.value = 0;
-      const length = Math.min(0.19, tickDuration * 1.55);
+      const length = event.tone ? Math.min(event.tone === 'night' ? 0.3 : 0.21, tickDuration * (event.tone === 'night' ? 2.2 : 1.65)) : Math.min(0.19, tickDuration * 1.55);
       const hz = frequency(event.note);
       osc.frequency.setValueAtTime(hz, time);
       osc.frequency.exponentialRampToValueAtTime(hz * 0.995, time + length);
-      filter.frequency.setValueAtTime(event.accent ? 2300 : 1700, time);
-      filter.frequency.exponentialRampToValueAtTime(420, time + length);
+      filter.frequency.setValueAtTime(event.tone === 'night' ? 1250 : event.tone === 'arcade' ? 2700 : event.accent ? 2300 : 1700, time);
+      filter.frequency.exponentialRampToValueAtTime(event.tone ? 650 : 420, time + length);
       amp.gain.setValueAtTime(0, time);
-      amp.gain.linearRampToValueAtTime(event.accent ? 0.20 : 0.16, time + 0.004);
+      amp.gain.linearRampToValueAtTime(event.tone ? (event.accent ? 0.15 : 0.11) : (event.accent ? 0.20 : 0.16), time + 0.004);
       amp.gain.exponentialRampToValueAtTime(0.0001, time + length);
-      osc.connect(filter).connect(amp).connect(this.buses.hook);
+      osc.connect(filter).connect(amp).connect(bus);
       this.sources.add(osc);
       osc.onended = () => {
         this.sources.delete(osc);
@@ -423,6 +435,7 @@
       } else this.base.offset.setTargetAtTime(90 * Math.pow(55, state.knobs.cutoff), time, 0.018);
       for (const track of event.drums) if (state.enabled[track]) this.drum(track, time, event.step);
       if (event.hook && state.hook.enabled) this.hookHit(event.hook, time, tickDuration);
+      if (event.synth && state.arrangement !== 'off') this.hookHit(event.synth, time, tickDuration, this.buses.synth);
       if (event.vox && state.vox.enabled && state.vox.level > 0) this.voxHit(event.vox, time);
       if (event.metal && state.metal && state.enabled.metal) {
         const hit = event.metal;
@@ -482,7 +495,7 @@
       return new Blob([encodeWav(channels, sr)], { type: 'audio/wav' });
     } finally { engine.dispose(); }
   }
-  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, JAM_MOVES, performanceBpm, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
+  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, performanceBpm, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.QB = api;
 })(typeof window !== 'undefined' ? window : globalThis);
