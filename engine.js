@@ -127,6 +127,35 @@
     return { move: force ? 0 : Math.floor(rng() * (metal ? JAM_MOVES.length : 6)), strength: force ? 1 : strength,
       direction: rng() < 0.5 ? -1 : 1, repeats: rng() < strength ? 4 : 2 };
   }
+  function autoTrackMask(seed, barInPhrase) {
+    const mask = { kick: true, hat: true, clap: true };
+    const phase = ((barInPhrase % 4) + 4) % 4;
+    if (phase === 1 || phase === 2) {
+      const tracks = TRACKS.slice();
+      const rng = random(seed ^ 0x4452554d);
+      const first = tracks.splice(Math.floor(rng() * tracks.length), 1)[0];
+      const second = tracks[Math.floor(rng() * tracks.length)];
+      mask[phase === 1 ? first : second] = false;
+      if (phase === 2 && rng() > 0.5) mask[first] = false;
+    }
+    return mask;
+  }
+  function bassRandomizerPlan(bar, startBar, autoMode) {
+    const elapsed = bar - startBar;
+    if (elapsed < 0) return { rest: false, refresh: false };
+    return {
+      rest: autoMode && elapsed % 4 < 2,
+      refresh: autoMode ? elapsed % 4 === 2 : elapsed > 0 && elapsed % 4 === 0
+    };
+  }
+  function autoKnobs(base, tick, seed, amount = 0.65) {
+    const rng = random(seed ^ 0x4b4e4f42);
+    const motion = clamp(amount, 0, 1);
+    const rates = { cutoff: 32, resonance: 48, bite: 24, slide: 64, drive: 64 };
+    const depths = { cutoff: 0.22, resonance: 0.16, bite: 0.18, slide: 0.20, drive: 0.13 };
+    return Object.fromEntries(Object.keys(DEFAULT_KNOBS).map(key => [key,
+      clamp(base[key] + Math.sin(tick * 2 * Math.PI / rates[key] + rng() * 2 * Math.PI) * depths[key] * motion)]));
+  }
   function jamEvent(state, tick, plan) {
     const event = eventsAt(state, tick);
     const step = event.step;
@@ -185,7 +214,7 @@
       this.analyser = node('createAnalyser');
       this.analyser.fftSize = 512;
       this.mix.connect(this.highpass).connect(comp).connect(ceiling).connect(this.master).connect(this.analyser).connect(context.destination);
-      this.buses = Object.fromEntries(['bass', ...TRACKS, 'metal', 'hook', 'synth', 'vox'].map(track => {
+      this.buses = Object.fromEntries(['bass', ...TRACKS, 'metal', 'hook', 'synth', 'vox', 'scratch'].map(track => {
         const bus = node('createGain'); bus.connect(this.mix); return [track, bus];
       }));
       this.osc = node('createOscillator');
@@ -227,6 +256,7 @@
       set(this.buses.hook.gain, state.hook.enabled ? 0.7 : 0);
       set(this.buses.synth.gain, state.arrangement === 'off' ? 0 : 0.55);
       set(this.buses.vox.gain, state.vox.enabled ? state.vox.level : 0);
+      set(this.buses.scratch.gain, 0.42);
       if (this.osc.type !== state.waveform) this.osc.type = state.waveform;
     }
     note(event, time, tickDuration, knobs) {
@@ -374,6 +404,27 @@
       };
       osc.start(time); osc.stop(time + length + 0.005);
     }
+    scratchHit(event, time, tickDuration) {
+      const ctx = this.ctx, length = Math.min(tickDuration * 0.92, 0.16);
+      const source = this.keep(ctx.createBufferSource()); source.buffer = this.noise;
+      const filter = this.keep(ctx.createBiquadFilter()); filter.type = 'bandpass'; filter.Q.value = 2.5;
+      const amp = this.keep(ctx.createGain()); amp.gain.value = 0;
+      const swipes = event.repeats || 2;
+      for (let i = 0; i < swipes; i++) {
+        const start = time + i * length / swipes, end = start + length / swipes;
+        const forward = (i % 2 === 0) === (event.direction > 0);
+        const low = forward ? 550 : 2100, high = forward ? 2100 : 550;
+        filter.frequency.setValueAtTime(low, start);
+        filter.frequency.exponentialRampToValueAtTime(high, end - 0.001);
+        amp.gain.setValueAtTime(0, start);
+        amp.gain.linearRampToValueAtTime(0.12 + event.strength * 0.09, start + 0.003);
+        amp.gain.linearRampToValueAtTime(0, end - 0.001);
+      }
+      source.connect(filter).connect(amp).connect(this.buses.scratch);
+      this.sources.add(source);
+      source.onended = () => { this.sources.delete(source); for (const node of [source, filter, amp]) { node.disconnect(); this.nodes.delete(node); } };
+      source.start(time); source.stop(time + length + 0.005);
+    }
     voxHit(event, time) {
       const ctx = this.ctx, nodes = [], sources = [];
       const keep = node => { this.keep(node); nodes.push(node); return node; };
@@ -416,6 +467,9 @@
       }
     }
     step(event, time, tickDuration, state) {
+      this.filter.Q.setTargetAtTime(0.7 + state.knobs.resonance * 13, time, 0.025);
+      this.drive.gain.setTargetAtTime(0.8 + state.knobs.drive * 7, time, 0.025);
+      this.bassLevel.gain.setTargetAtTime(0.58 / (1 + 0.65 * state.knobs.drive), time, 0.025);
       if (event.bass && state.enabled.bass) this.note(event.bass, time, tickDuration, state.knobs);
       else this.rest(time);
       // Detune is independent of note/slide frequency automation. Each gesture
@@ -424,6 +478,7 @@
       if (event.jam) {
         const jam = event.jam;
         this.base.offset.setTargetAtTime(90 * Math.pow(55, jam.cutoff), time, 0.012);
+        if (jam.move === 0) this.scratchHit(jam, time, tickDuration);
         if (jam.move === 0 && state.enabled.bass) {
           for (let n = 0; n < jam.repeats; n++) {
             const start = time + tickDuration * n / jam.repeats;
@@ -495,7 +550,7 @@
       return new Blob([encodeWav(channels, sr)], { type: 'audio/wav' });
     } finally { engine.dispose(); }
   }
-  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, performanceBpm, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
+  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, performanceBpm, autoTrackMask, bassRandomizerPlan, autoKnobs, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.QB = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -16,15 +16,11 @@
   let tick = 0, nextTime = 0, bar = null;
   let visuals = [];
   let platterEvent = null, platterAngle = 0, platterTime = null, platterBpm = state.bpm;
-  let autoJam = false, jamAmount = 0.65, holdRiff = false, madQueued = false, activeJam = null;
+  let autoJam = true, jamAmount = 0.65, holdRiff = false, madQueued = false, activeJam = null;
+  let bassRandomizer = false, randomizerStartBar = 0, autoPhraseSeed = 0, acidRamp = null;
+  let liveEnabled = { ...state.enabled };
   let liveHookVariation = state.hook.variation;
-  let speedWander = false, rushQueued = false, rushBar = -1, liveBpm = state.bpm, colorIndex = 0;
-  const colors = ['classic', 'hot-pink', 'ultraviolet', 'electric-blue', 'acid-lime'];
-  function colorPop() {
-    colorIndex = (colorIndex + 1) % colors.length;
-    $('.machine').dataset.color = colors[colorIndex];
-    $('#color-pop').setAttribute('aria-label', `COLOR POP 配色変更、現在 ${colors[colorIndex]}`);
-  }
+  let speedWander = false, rushQueued = false, rushBar = -1, liveBpm = state.bpm;
   let jamSeed = crypto.getRandomValues(new Uint32Array(1))[0];
   const pulses = new Map();
   const canvas = $('#scope'), brush = canvas.getContext('2d');
@@ -40,6 +36,18 @@
   let shownCutoffHz = cutoffHzFor(state.knobs.cutoff);
   let targetCutoffHz = shownCutoffHz, cutoffVisualTime = 0, cutoffVisualTau = 0.012;
   let cutoffVisualActive = false, cutoffPainted = false;
+  const shownKnobs = { ...state.knobs }, targetKnobs = { ...state.knobs };
+  let knobVisualTime = 0, knobMotionActive = false, otherKnobsPainted = false;
+  function paintOtherKnobs(time) {
+    const elapsed = Math.max(0, Math.min((time - knobVisualTime) / 1000, 0.1));
+    knobVisualTime = time;
+    for (const key of ['resonance', 'bite', 'slide', 'drive']) {
+      shownKnobs[key] += (targetKnobs[key] - shownKnobs[key]) * (1 - Math.exp(-elapsed / 0.065));
+      const value = Q.clamp(shownKnobs[key]);
+      $(`[data-knob="${key}"]`).style.setProperty('--value', value);
+      $(`#value-${key}`).value = '~' + String(Math.round(value * 100)).padStart(2, '0');
+    }
+  }
   function advanceCutoffVisual(time) {
     if (!Number.isFinite(time) || time <= cutoffVisualTime) return;
     shownCutoffHz = targetCutoffHz + (shownCutoffHz - targetCutoffHz) * Math.exp(-(time - cutoffVisualTime) / cutoffVisualTau);
@@ -92,6 +100,18 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { try { localStorage.setItem(STORAGE, JSON.stringify(state)); } catch (_) { /* No storage permission: keep this session in memory. */ } }, 150);
   }
+  function rampKnobsAt(atTick) {
+    if (!acidRamp) return { ...state.knobs };
+    const progress = Q.clamp((atTick - acidRamp.startTick) / 64);
+    return Object.fromEntries(Object.keys(state.knobs).map(key => [key,
+      acidRamp.from[key] + (acidRamp.to[key] - acidRamp.from[key]) * progress]));
+  }
+  function finishAcidRamp(atTick) {
+    if (!acidRamp) return;
+    state.knobs = rampKnobsAt(atTick);
+    acidRamp = null;
+    syncView(); persist();
+  }
   function changed() {
     engine?.update(state);
     syncView();
@@ -106,7 +126,7 @@
     $('#knobs').append(block);
     const dial = block.querySelector('.dial');
     let drag = null;
-    const set = value => { state.knobs[key] = Q.clamp(value); changed(); };
+    const set = value => { if (acidRamp) finishAcidRamp(tick); state.knobs[key] = Q.clamp(value); changed(); };
     dial.addEventListener('pointerdown', e => {
       if (e.button !== 0 || drag) return;
       e.preventDefault(); dial.focus({ preventScroll: true });
@@ -160,7 +180,8 @@
     $('#chaos-value').value = Math.round(jamAmount * 100);
     $('#metal').setAttribute('aria-pressed', String(state.metal));
     $('#hook').setAttribute('aria-pressed', String(state.hook.enabled));
-    $('#hook-variation').textContent = `HOOK ${state.hook.variation + 1}/${Q.HOOK_PATTERN_COUNT}`;
+    $('#hook small').textContent = state.hook.enabled ? `${liveHookVariation + 1}/${Q.HOOK_PATTERN_COUNT} · ${autoJam && !holdRiff ? '4小節で選ぶ' : '固定中'}` : '短いメロディー OFF';
+    $('#mutate').setAttribute('aria-pressed', String(bassRandomizer));
     $('#arrange').textContent = `SYNTH ${state.arrangement.toUpperCase()}`;
     $('#arrange').setAttribute('aria-pressed', String(state.arrangement !== 'off'));
     $('#vox').setAttribute('aria-pressed', String(state.vox.enabled));
@@ -201,6 +222,14 @@
     $('#play-label').textContent = running ? 'STOP IT' : "LET'S GO";
     document.body.classList.toggle('running', running);
   }
+  function syncRush() {
+    const button = $('#rush');
+    button.classList.toggle('queued', rushQueued);
+    button.classList.toggle('active', rushBar >= 0 && !rushQueued);
+    button.setAttribute('aria-pressed', String(rushQueued || rushBar >= 0));
+    button.firstChild.textContent = rushQueued ? 'RUSH NEXT' : rushBar >= 0 ? `RUSH ${rushBar + 1}/4` : 'RUSH!';
+    button.querySelector('small').textContent = rushQueued ? '次の小節から' : rushBar >= 0 ? `${liveBpm} BPM` : '4小節で加速';
+  }
   function audioContext() {
     const Audio = window.AudioContext || window.webkitAudioContext;
     if (!Audio) throw new Error('Web Audio API に対応したブラウザで開いてください。');
@@ -232,14 +261,19 @@
       engine = new Q.Engine(ctx, state); running = true;
       tick = 0; nextTime = ctx.currentTime + 0.045; visuals = []; bar = Q.clone(state);
       liveHookVariation = state.hook.variation;
+      liveEnabled = { ...state.enabled }; randomizerStartBar = 0; autoPhraseSeed = jamSeed;
+      if (acidRamp) acidRamp.startTick = 0;
+      Object.assign(shownKnobs, state.knobs); Object.assign(targetKnobs, state.knobs);
+      knobVisualTime = performance.now(); knobMotionActive = false;
       shownCutoffHz = targetCutoffHz = cutoffHzFor(state.knobs.cutoff);
       cutoffVisualTime = heardTime(); cutoffVisualActive = false; restoreCutoffVisual(); resetTurntable();
-      syncTransport(); schedule(); timer = setInterval(schedule, 25); ensureFrame();
+      syncTransport(); syncRush(); schedule(); timer = setInterval(schedule, 25); ensureFrame();
       say('ノブを回して遊ぼう。音が大きいときは VOLUME を下げてください。');
     } catch (error) { stop(error.message || '音声の初期化に失敗しました。'); }
     finally { if (token === startToken) starting = false; $('#play').disabled = false; }
   }
   function stop(message = '停止しました。設定はそのままです。') {
+    if (acidRamp) finishAcidRamp(tick);
     ++startToken; starting = false; running = false; $('#play').disabled = false;
     clearInterval(timer); timer = null; visuals = [];
     activeJam = null; madQueued = false;
@@ -249,8 +283,9 @@
     if (engine) { const old = engine; old.fadeOut(); setTimeout(() => old.dispose(), 35); engine = null; }
     clearPreview(); clearLights();
     cutoffVisualActive = false; restoreCutoffVisual(); resetTurntable();
+    knobMotionActive = false; otherKnobsPainted = false; $$('.auto-rest').forEach(el => el.classList.remove('auto-rest')); syncView();
     if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
-    $('#step-counter').textContent = '-- / 16'; syncTransport(); drawScope(null); say(message);
+    $('#step-counter').textContent = '-- / 16'; syncTransport(); syncRush(); drawScope(null); say(message);
   }
   function schedule() {
     if (!running || !engine) return;
@@ -259,31 +294,40 @@
     try {
       while (nextTime < ctx.currentTime + 0.10) {
         if (tick % 16 === 0) {
+          const barNumber = tick / 16, phrasePhase = barNumber % 4;
           jamSeed = (jamSeed + 0x9e3779b9) >>> 0;
+          if (phrasePhase === 0) autoPhraseSeed = jamSeed;
           if (rushQueued) { rushBar = 0; rushQueued = false; }
           else if (rushBar >= 0) rushBar = rushBar < 3 ? rushBar + 1 : -1;
           activeJam = autoJam || madQueued || rushBar >= 0 ? Q.jamPlan(jamSeed, jamAmount, madQueued, state.metal) : null;
           if (rushBar >= 0 && !madQueued) activeJam = { ...activeJam, strength: 1, move: [state.metal ? 6 : 3, state.metal ? 7 : 2, 0, 5][rushBar] };
           madQueued = false;
-          if (autoJam && !holdRiff && tick > 0) {
-            const rng = Q.random(jamSeed ^ 303);
-            if (rng() < 0.25 + jamAmount * 0.65) {
-              state.seed = (state.seed + 1) >>> 0;
-              const index = 1 + Math.floor(rng() * 7);
-              state.bass[index] = Q.newRiff(state.seed)[index];
-              syncView(); persist();
-            }
+          const bassPlan = Q.bassRandomizerPlan(barNumber, randomizerStartBar, autoJam);
+          if (bassRandomizer && !holdRiff && bassPlan.refresh) {
+            state.seed = (state.seed + 0x9e3779b9) >>> 0;
+            state.bass = Q.newRiff(state.seed);
+            syncView(); persist();
           }
           if (!autoJam) liveHookVariation = state.hook.variation;
-          else if (!holdRiff && tick % 64 === 0) liveHookVariation = Math.floor(Q.random(jamSeed ^ 0x484f4f4b)() * Q.HOOK_PATTERN_COUNT);
+          else if (!holdRiff && phrasePhase === 0) liveHookVariation = Math.floor(Q.random(autoPhraseSeed ^ 0x484f4f4b)() * Q.HOOK_PATTERN_COUNT);
+          liveEnabled = { ...state.enabled };
+          if (autoJam) {
+            const mask = Q.autoTrackMask(autoPhraseSeed, phrasePhase);
+            for (const track of Q.TRACKS) liveEnabled[track] = state.enabled[track] && mask[track];
+            if (bassRandomizer && !holdRiff && bassPlan.rest) liveEnabled.bass = false;
+          }
           bar = Q.clone(state);
           bar.hook.variation = liveHookVariation;
           liveBpm = Q.performanceBpm(bar.bpm, jamSeed, speedWander, rushBar);
+          syncView(); syncRush();
         }
         const duration = 60 / liveBpm / 4;
-        const event = Q.jamEvent({ ...bar, knobs: state.knobs, metal: state.metal }, tick, activeJam);
-        engine.step(event, nextTime, duration, state);
-        visuals.push({ ...event, bpm: liveBpm, pop: rushBar >= 0 && event.step === 0, jamLabel: (rushBar >= 0 ? `RUSH ${rushBar + 1}/4 · ` : '') + (activeJam ? Q.JAM_MOVES[activeJam.move] : state.metal ? 'CLANG CLANG' : 'YOUR HANDS. YOUR NOISE.'), time: nextTime, tickDuration: duration, cursor: Q.positions(bar.groove).findLastIndex(p => p <= event.step), enabled: { ...state.enabled }, slide: state.knobs.slide });
+        if (acidRamp && tick >= acidRamp.startTick + 64) finishAcidRamp(tick);
+        const baseKnobs = rampKnobsAt(tick);
+        const liveKnobs = autoJam ? Q.autoKnobs(baseKnobs, tick, autoPhraseSeed, jamAmount) : baseKnobs;
+        const event = Q.jamEvent({ ...bar, knobs: liveKnobs, metal: state.metal }, tick, activeJam);
+        engine.step(event, nextTime, duration, { ...state, knobs: liveKnobs, enabled: liveEnabled });
+        visuals.push({ ...event, bpm: liveBpm, knobs: liveKnobs, animatedKnobs: Boolean(autoJam || acidRamp), jamLabel: (rushBar >= 0 ? `RUSH ${rushBar + 1}/4 · ` : '') + (!liveEnabled.bass && state.enabled.bass ? 'BASS REST · ' : '') + (activeJam ? Q.JAM_MOVES[activeJam.move] : state.metal ? 'CLANG CLANG' : 'YOUR HANDS. YOUR NOISE.'), time: nextTime, tickDuration: duration, cursor: Q.positions(bar.groove).findLastIndex(p => p <= event.step), enabled: { ...liveEnabled }, slide: liveKnobs.slide });
         nextTime += duration; tick++;
       }
     } catch (_) { stop('音声処理を停止しました。LET\'S GO で再開してください。'); }
@@ -311,12 +355,18 @@
       const event = visuals.shift();
       platterEvent = event; platterBpm = event.bpm;
       advanceCutoffVisual(event.time);
-      targetCutoffHz = cutoffHzFor(event.jam?.cutoff ?? state.knobs.cutoff);
+      targetCutoffHz = cutoffHzFor(event.jam?.cutoff ?? event.knobs.cutoff);
       cutoffVisualTau = event.jam ? 0.012 : 0.018;
-      cutoffVisualActive = Boolean(event.jam) || cutoffVisualActive;
+      cutoffVisualActive = Boolean(event.jam || event.animatedKnobs) || cutoffVisualActive;
+      knobMotionActive = event.animatedKnobs;
+      Object.assign(targetKnobs, event.knobs);
+      for (const track of ['bass', ...Q.TRACKS]) {
+        $(`[data-track="${track}"]`).classList.toggle('auto-rest', state.enabled[track] && !event.enabled[track]);
+      }
+      $('#bass-toggle-state').textContent = !state.enabled.bass ? 'OFF' : event.enabled.bass ? 'ON' : 'REST';
+      $('#bass-toggle').setAttribute('aria-label', !state.enabled.bass ? 'ベースをオンにする' : event.enabled.bass ? 'ベースをオフにする' : 'ベースは自動で休み中。押すと手動でオフ');
       $('#jam-now').textContent = event.jamLabel;
       $('#live-bpm').textContent = `${event.bpm} BPM`;
-      if (event.pop && rushBar >= 0 && state.lights && !motion.matches) colorPop();
       $('#step-counter').textContent = `${String(event.step + 1).padStart(2, '0')} / 16`;
       if (state.lights) {
         $$('.current').forEach(el => el.classList.remove('current'));
@@ -340,6 +390,14 @@
     if (cutoffVisualActive && targetCutoffHz === cutoffHzFor(state.knobs.cutoff) && Math.abs(shownCutoffHz - targetCutoffHz) < 1) cutoffVisualActive = false;
     if (running && cutoffVisualActive && state.lights && !motion.matches) paintCutoffVisual();
     else restoreCutoffVisual();
+    if (running && knobMotionActive && state.lights && !motion.matches) { paintOtherKnobs(now); otherKnobsPainted = true; }
+    else if (otherKnobsPainted) {
+      for (const key of ['resonance', 'bite', 'slide', 'drive']) {
+        $(`[data-knob="${key}"]`).style.setProperty('--value', state.knobs[key]);
+        $(`#value-${key}`).value = String(Math.round(state.knobs[key] * 100)).padStart(2, '0');
+      }
+      otherKnobsPainted = false; knobVisualTime = now;
+    }
     paintTurntable(clock);
     for (const [el, end] of pulses) if (end <= now) { el.classList.remove('hit', 'sliding'); pulses.delete(el); }
     drawScope(engine || previewEngine);
@@ -374,19 +432,17 @@
   }
 
   $('#play').addEventListener('click', () => running ? stop() : start());
-  $('#metal').addEventListener('click', () => { state.metal = !state.metal; changed(); say(state.metal ? 'METAL! カンカンを追加。AUTO JAM でシャカシャカやキュッキュッも。' : '金属音をオフ。'); });
-  $('#hook').addEventListener('click', () => { state.hook.enabled = !state.hook.enabled; changed(); patternMessage(state.hook.enabled ? 'HOOK を追加。ベースに合わせて2小節のフレーズを演奏。' : 'HOOK をオフ。'); });
-  $('#hook-variation').addEventListener('click', () => { state.hook.variation = (state.hook.variation + 1) % Q.HOOK_PATTERN_COUNT; liveHookVariation = state.hook.variation; changed(); patternMessage(`HOOK のフレーズを ${state.hook.variation + 1}/${Q.HOOK_PATTERN_COUNT} に変更。`); });
+  $('#metal').addEventListener('click', () => { state.metal = !state.metal; changed(); say(state.metal ? 'METAL! カンカンを追加。AUTO MODE でシャカシャカやキュッキュッも。' : '金属音をオフ。'); });
+  $('#hook').addEventListener('click', () => { state.hook.enabled = !state.hook.enabled; changed(); patternMessage(state.hook.enabled ? 'HOOK AUTO を追加。AUTO MODE 中は4小節ごとにフレーズを選びます。' : 'HOOK をオフ。'); });
   $('#arrange').addEventListener('click', () => { state.arrangement = Q.ARRANGEMENTS[(Q.ARRANGEMENTS.indexOf(state.arrangement) + 1) % Q.ARRANGEMENTS.length]; changed(); patternMessage(state.arrangement === 'off' ? 'SYNTH ARRANGE をオフ。' : `SYNTH ARRANGE: ${state.arrangement.toUpperCase()}。2小節のシンセフレーズを重ねます。`); });
   $('#vox').addEventListener('click', () => { state.vox.enabled = !state.vox.enabled; changed(); patternMessage(state.vox.enabled ? 'ROBOT VOX を追加。短い声の断片が鳴ります。' : 'ROBOT VOX をオフ。'); });
   $('#vox-level').addEventListener('input', e => { state.vox.level = Number(e.target.value) / 100; changed(); });
   $('#speed-wander').addEventListener('click', () => { speedWander = !speedWander; syncView(); patternMessage(speedWander ? 'WILD SPEED! 小節ごとに速さが変化。元のBPMはキープ。' : '次の小節で元の速さへ。'); });
-  $('#rush').addEventListener('click', () => { rushQueued = true; if (!running) start(); else say('次の小節から4小節のRUSH! 加速して、戻ります。'); });
-  $('#color-pop').addEventListener('click', colorPop);
+  $('#rush').addEventListener('click', () => { rushQueued = true; syncRush(); if (!running) start(); else say('RUSH を予約。次の小節から4小節で加速して戻ります。'); });
   $('#auto-jam').addEventListener('click', () => {
     autoJam = !autoJam; syncView();
-    patternMessage(autoJam ? 'AUTO JAM! 小節ごとに遊び方が変わります。' : 'AUTO JAM をオフにしました。');
-    if (!running) $('#jam-now').textContent = autoJam ? "LET'S GO TO JAM" : 'YOUR HANDS. YOUR NOISE.';
+    patternMessage(autoJam ? 'AUTO MODE! 4小節でベース、ドラム、HOOK、ノブが展開します。' : 'AUTO MODE をオフにしました。');
+    if (!running) $('#jam-now').textContent = autoJam ? 'READY TO JAM' : 'YOUR HANDS. YOUR NOISE.';
   });
   $('#chaos').addEventListener('input', e => { jamAmount = Number(e.target.value) / 100; syncView(); });
   $('#hold-riff').addEventListener('click', () => { holdRiff = !holdRiff; syncView(); say(holdRiff ? 'このリフをキープ。音の遊びは続きます。' : 'リフの自動変化を再開。'); });
@@ -412,21 +468,24 @@
   $$('[data-preset]').forEach(el => el.addEventListener('click', () => { state.preset = el.dataset.preset; state.drums = Q.drumPattern(state.preset); changed(); patternMessage(`ドラムを ${el.textContent} に変更。`); }));
   $('#random').addEventListener('click', () => { state.seed = (state.seed + 0x9e3779b9) >>> 0; state.bass = Q.newRiff(state.seed); changed(); patternMessage('新しいベースが出ました。'); });
   $('#mutate').addEventListener('click', () => {
-    state.seed = (state.seed + 1) >>> 0; const rng = Q.random(state.seed), index = Math.floor(rng() * 8);
-    const candidate = Q.newRiff(state.seed)[index];
-    if (candidate.note === state.bass[index].note) candidate.note = candidate.note === 48 ? 43 : 48;
-    state.bass[index] = { ...candidate, on: true }; changed(); patternMessage(`ベースの ${index + 1} 番だけ変えました。`);
+    bassRandomizer = !bassRandomizer;
+    randomizerStartBar = running ? Math.ceil(tick / 16) : 0;
+    syncView();
+    patternMessage(bassRandomizer ? 'BASS RAND をオン。4小節ごとに新しいリフ。AUTO MODE 中は2小節休んで戻ります。' : 'BASS RAND をオフ。');
   });
   $('#acid').addEventListener('click', () => {
-    for (const [key, amount] of [['cutoff', 0.055], ['resonance', 0.075], ['bite', 0.09], ['slide', 0.09], ['drive', 0.065]]) state.knobs[key] = Math.min(1, state.knobs[key] + amount);
-    changed(); say('MORE ACID! 音量設定はそのまま。戻すときは CALM DOWN。');
+    const from = rampKnobsAt(tick);
+    const to = { ...from };
+    for (const [key, amount] of [['cutoff', 0.18], ['resonance', 0.20], ['bite', 0.22], ['slide', 0.18], ['drive', 0.16]]) to[key] = Math.min(1, from[key] + amount);
+    acidRamp = { from, to, startTick: running ? tick : 0 };
+    say(running ? 'INCREASE ACID! 4小節かけて音色を強めます。' : 'INCREASE ACID を予約。再生から4小節かけて音色を強めます。');
   });
-  $('#calm').addEventListener('click', () => { autoJam = false; activeJam = null; madQueued = false; speedWander = false; rushQueued = false; rushBar = -1; liveBpm = bar?.bpm ?? state.bpm; state.metal = false; colorIndex = 0; $('.machine').dataset.color = colors[0]; $('#color-pop').setAttribute('aria-label', 'COLOR POP 配色変更、現在 classic'); state.knobs = { ...Q.DEFAULT_KNOBS }; changed(); say('自動変化・金属音・加速をオフ。音色と配色を戻しました。'); });
+  $('#calm').addEventListener('click', () => { autoJam = false; bassRandomizer = false; acidRamp = null; activeJam = null; madQueued = false; speedWander = false; rushQueued = false; rushBar = -1; liveBpm = bar?.bpm ?? state.bpm; state.metal = false; state.knobs = { ...Q.DEFAULT_KNOBS }; changed(); syncRush(); say('自動変化・金属音・加速をオフ。音色を戻しました。'); });
   $('#lights').addEventListener('click', () => { state.lights = !state.lights; changed(); drawScope(engine || previewEngine); });
   motion.addEventListener('change', e => { if (e.matches) { state.lights = false; changed(); } });
   $('#save').addEventListener('click', async () => {
     const button = $('#save'); button.disabled = true;
-    const snapshot = Q.clone(state); say('4小節の WAV を作成しています…');
+    const snapshot = Q.clone(state); snapshot.knobs = rampKnobsAt(tick); say('4小節の WAV を作成しています…');
     try {
       const blob = await Q.renderWav(snapshot, 4);
       const url = URL.createObjectURL(blob), link = document.createElement('a');
@@ -451,5 +510,5 @@
     try { localStorage.setItem(STORAGE, JSON.stringify(state)); } catch (_) { /* Optional persistence. */ }
     stop(); context?.close().catch(() => {});
   });
-  syncView(); syncTransport(); drawScope(null);
+  syncView(); syncTransport(); syncRush(); drawScope(null);
 })();
