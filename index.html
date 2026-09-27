@@ -42,14 +42,14 @@
           <button id="go-mad" title="押すと次の小節を1小節スクラッチ" aria-label="GO MAD! 次の小節をスクラッチ"><span class="turntable-mini" aria-hidden="true"><span class="turntable-platter"></span><span class="turntable-arm"></span></span><span class="turntable-copy">GO MAD!<small>1小節、スクラッチ</small></span></button>
         </div>
         <div class="jam-controls extra-play">
-          <button id="metal" aria-pressed="false">METAL!<small>カンカン・キンキン</small></button>
+          <button id="metal" aria-pressed="true">METAL!<small>カンカン・キンキン</small></button>
           <button id="speed-wander" aria-pressed="false">WILD SPEED<small>速さもランダム</small></button>
           <button id="rush" aria-pressed="false">RUSH!<small>4小節で加速</small></button>
           <button id="color-pop" aria-label="COLOR POP 配色変更、現在 classic" hidden>COLOR POP<small>色まで、弾ける。</small></button>
           <button id="hook" aria-pressed="true">HOOK AUTO<small>4小節ごとに選ぶ</small></button>
-          <button id="arrange" aria-label="シンセアレンジ切替" aria-pressed="false">SYNTH OFF</button>
+          <button id="arrange" aria-label="シンセアレンジ切替" aria-pressed="true">SYNTH ARCADE</button>
           <button id="vox" aria-pressed="true">ROBOT VOX<small>ことば未満の声</small></button>
-          <label class="vox-level-control" for="vox-level">VOX LEVEL <output id="vox-value">35</output><input id="vox-level" type="range" min="0" max="100" value="35" aria-label="ROBOT VOX の音量"></label>
+          <label class="vox-level-control" for="vox-level">VOX LEVEL <output id="vox-value">100</output><input id="vox-level" type="range" min="0" max="100" value="100" aria-label="ROBOT VOX の音量"></label>
         </div>
         <p class="jam-hint">AUTO MODE は最初からON。最初の1周だけベースがお休み。その後は4周鳴って2周休み、ときどき4周の間奏。<output id="live-bpm" aria-label="演奏中のテンポ">128 BPM</output></p>
       </section>
@@ -62,22 +62,22 @@
           <div class="section-heading"><h2><span class="section-index">02</span> LITTLE BASS, BIG MOUTH</h2></div>
           <div id="bass-grid" class="bass-grid" role="group" aria-label="8ステップのベース"></div>
           <div class="pattern-legend"><span><i class="legend-dot accent-dot"></i>ACCENT <i class="legend-slide">↗</i>SLIDE</span><span>パッドで音を ON / OFF</span></div>
-          <div class="groove-row"><span class="control-caption">SYNCOPATION<small>ベースのノリをずらす</small></span><div class="groove-switch" role="group" aria-label="シンコペーション"><button data-groove="straight" aria-pressed="true">STRAIGHT</button><button data-groove="bounce" aria-pressed="false">BOUNCE</button><button data-groove="weird" aria-pressed="false">WEIRD</button></div></div>
+          <div class="groove-row"><span class="control-caption">SYNCOPATION<small>ベースのノリをずらす</small></span><div class="groove-switch" role="group" aria-label="シンコペーション"><button data-groove="straight" aria-pressed="false">STRAIGHT</button><button data-groove="bounce" aria-pressed="false">BOUNCE</button><button data-groove="weird" aria-pressed="true">WEIRD</button></div></div>
         </section>
         <section class="drum-section" aria-label="ドラム">
           <div class="section-heading"><h2><span class="section-index">03</span> ADD SOME BOOTS & CATS</h2><span class="tiny-label">16 STEPS</span></div>
           <div id="drum-grid" class="drum-grid"></div>
-          <div class="drum-presets" role="group" aria-label="ドラムのリズム"><button data-preset="four" aria-pressed="true">4 BEAT</button><button data-preset="eight" aria-pressed="false">8 BEAT</button><button data-preset="offbeat" aria-pressed="false">OFFBEAT</button><button data-preset="weird" aria-pressed="false">WEIRD</button></div>
+          <div class="drum-presets" role="group" aria-label="ドラムのリズム"><button data-preset="four" aria-pressed="false">4 BEAT</button><button data-preset="eight" aria-pressed="false">8 BEAT</button><button data-preset="offbeat" aria-pressed="false">OFFBEAT</button><button data-preset="weird" aria-pressed="true">WEIRD</button></div>
           <p class="drum-hint">名前でミュート。小さなマスでリズムを変更。</p>
         </section>
       </div>
       <section class="action-deck" aria-label="遊ぶ・保存する">
         <button id="random" class="action random"><span class="action-icon" aria-hidden="true">⚄</span><span>NEW RIFF<small>ベースをガチャ</small></span></button>
-        <button id="mutate" class="action mutate" aria-pressed="false"><span class="action-icon" aria-hidden="true">↝</span><span>BASS RAND<small>4小節ごと</small></span></button>
+        <button id="mutate" class="action mutate" aria-pressed="true"><span class="action-icon" aria-hidden="true">↝</span><span>BASS RAND<small>4小節ごと</small></span></button>
         <button id="acid" class="action acid"><span class="action-icon" aria-hidden="true">↗</span><span>INCREASE ACID<small>4小節かけて上げる</small></span></button>
         <button id="animal-pad" class="action one-shot animal-pad" aria-label="ANIMAL VOICE 押すたび動物または人声風の音を一回鳴らす"><span class="action-icon" aria-hidden="true">♪</span><span>ANIMAL VOICE<small>押すとランダムに鳴る</small></span></button>
         <button id="sfx-pad" class="action one-shot sfx-pad" aria-label="SFX PAD 最初は急ブレーキ、その後はランダムな効果音を一回鳴らす"><span class="action-icon" aria-hidden="true">✦</span><span>SFX PAD<small>最初は急ブレーキ</small></span></button>
-        <button id="calm" class="calm">CALM DOWN<small>音色を戻す</small></button>
+        <button id="calm" class="calm">RESET ALL<small>初期設定に戻す</small></button>
         <button id="save" class="save"><span aria-hidden="true">↓</span> SAVE WAV<small>今の設定で4小節</small></button>
       </section>
       <footer class="machine-footer"><span id="status" role="status" aria-live="polite">AUTO MODE 準備OK。LET'S GO で音が出ます。</span><div class="footer-toggles"><button id="color-lock" class="lights-switch" aria-pressed="false" hidden><span class="toggle-track" aria-hidden="true"></span> COLOR LOCK</button><button id="lights" class="lights-switch" aria-pressed="true"><span class="toggle-track" aria-hidden="true"></span> LEDs</button></div></footer>

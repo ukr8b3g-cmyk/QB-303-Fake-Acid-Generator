@@ -15,7 +15,8 @@ test('metal scenes are available only when enabled, with legal hit counts and pi
     }
   }
   assert.equal(moves.size, 9);
-  assert.equal(Q.jamEvent(Q.initialState(), 0, Q.jamPlan(3)).metal, undefined);
+  const muted = Q.initialState(); muted.metal = false;
+  assert.equal(Q.jamEvent(muted, 0, Q.jamPlan(3)).metal, undefined);
   assert.equal(Q.normalize(state).metal, true);
 });
 
@@ -45,7 +46,7 @@ test('jam is deterministic, varied and cannot overwrite the source pattern or co
   }
   assert.equal(moves.size, 6); assert.deepEqual(state, before);
   for (let i = 0; i < 16; i++) {
-    const { hook, synth, vox, ...base } = Q.jamEvent(state, i, null);
+    const { hook, synth, vox, metal, ...base } = Q.jamEvent(state, i, null);
     assert.deepEqual(base, Q.eventsAt(state, i));
   }
 });
@@ -83,6 +84,7 @@ test('ten HOOK phrases are distinct and repeat over two bars', () => {
 test('synth arrangements have distinct two-bar counterlines and persist', () => {
   const state = Q.initialState(), signatures = new Set();
   assert.deepEqual(Q.ARRANGEMENTS, ['off', 'parade', 'night', 'arcade']);
+  state.arrangement = 'off';
   assert.equal(Q.jamEvent(state, 0, null).synth, null);
   for (const arrangement of Q.ARRANGEMENTS.slice(1)) {
     state.arrangement = arrangement;
@@ -93,7 +95,7 @@ test('synth arrangements have distinct two-bar counterlines and persist', () => 
     assert.equal(Q.normalize(Q.clone(state)).arrangement, arrangement);
   }
   assert.equal(signatures.size, 3);
-  assert.equal(Q.normalize({ ...state, arrangement: 'unknown' }).arrangement, 'off');
+  assert.equal(Q.normalize({ ...state, arrangement: 'unknown' }).arrangement, Q.initialState().arrangement);
   const broken = Q.jamEvent(state, 12, { ...Q.jamPlan(303), move: 4 });
   assert.equal(broken.synth, null);
 });
@@ -185,6 +187,39 @@ test('factory creates isolated, valid state', () => {
   assert.equal(b.bass[0].note, 36); assert.equal(b.knobs.cutoff, 0.34); assert.equal(b.drums.kick[0], true);
   assert.deepEqual(Q.normalize(b), b);
 });
+test('demo defaults and manual AUTO MODE overrides survive normalization', () => {
+  const state = Q.initialState();
+  assert.equal(state.groove, 'weird'); assert.equal(state.preset, 'weird');
+  assert.deepEqual(state.drums, Q.drumPattern('weird'));
+  assert.equal(state.metal, true); assert.equal(state.hook.enabled, true);
+  assert.equal(state.arrangement, 'arcade'); assert.equal(state.vox.enabled, true); assert.equal(state.vox.level, 1);
+  assert.equal(Q.autoBassRest(0, true), true); assert.equal(Q.autoBassRest(1, true), false);
+  state.manual.bass = true; state.manual.bassPattern = true;
+  state.manual.drums.kick = true; state.manual.knobs.cutoff = true;
+  assert.deepEqual(Q.normalize(Q.clone(state)).manual, state.manual);
+  const restored = Q.normalize({ version: 1, manual: { bass: 'true', drums: { kick: 1 }, knobs: { cutoff: null } } });
+  assert.deepEqual(restored.manual, Q.initialState().manual);
+});
+test('manual bass, drum and knob changes override only their AUTO MODE lanes', () => {
+  const state = Q.initialState();
+  assert.equal(Q.performanceEnabled(state, 303, 0, 0, true).bass, false);
+  state.manual.bass = true;
+  assert.equal(Q.performanceEnabled(state, 303, 0, 0, true).bass, true);
+  const seed = Array.from({ length: 100 }, (_, value) => value).find(value => Object.values(Q.autoTrackMask(value, 2)).includes(false));
+  const mutedTrack = Q.TRACKS.find(track => !Q.autoTrackMask(seed, 2)[track]);
+  assert.equal(Q.performanceEnabled(state, seed, 2, 2, true)[mutedTrack], false);
+  state.manual.drums[mutedTrack] = true;
+  assert.equal(Q.performanceEnabled(state, seed, 2, 2, true)[mutedTrack], true);
+  assert.deepEqual(Q.performanceEnabled(state, seed, 2, 2, false), state.enabled);
+  const base = { ...state.knobs };
+  const moving = Q.performanceKnobs(base, 5, 303, 1, true, state.manual.knobs);
+  state.manual.knobs.cutoff = true;
+  const overridden = Q.performanceKnobs(base, 5, 303, 1, true, state.manual.knobs);
+  assert.equal(overridden.cutoff, base.cutoff);
+  assert.equal(overridden.drive, moving.drive);
+  assert.notDeepEqual(overridden, moving);
+  assert.deepEqual(Q.performanceKnobs(base, 5, 303, 1, false, state.manual.knobs), base);
+});
 test('invalid or future-version storage falls back safely', () => {
   for (const value of [null, undefined, '', [], { version: 2 }]) assert.deepEqual(Q.normalize(value), Q.initialState());
 });
@@ -192,7 +227,7 @@ test('normalization rejects NaN, infinity, malformed controls and unknown choice
   const raw = { version: 1, bpm: Infinity, volume: NaN, waveform: 'invalid', groove: 'bad', preset: '__proto__', knobs: { cutoff: '1', resonance: NaN }, enabled: { bass: 'false' } };
   const s = Q.normalize(raw), initial = Q.initialState();
   assert.equal(s.bpm, initial.bpm); assert.equal(s.volume, initial.volume);
-  assert.equal(s.waveform, 'sawtooth'); assert.equal(s.groove, 'straight'); assert.equal(s.preset, 'four');
+  assert.equal(s.waveform, 'sawtooth'); assert.equal(s.groove, initial.groove); assert.equal(s.preset, initial.preset);
   assert.deepEqual(s.knobs, initial.knobs); assert.equal(s.enabled.bass, true);
 });
 test('numbers are bounded and notes are integral', () => {
@@ -224,7 +259,7 @@ test('all groove positions are unique, ordered and inside the bar', () => {
   }
 });
 test('syncopation changes bass onsets, not tempo or the kick pattern', () => {
-  const a = Q.initialState(), b = Q.initialState(); b.groove = 'weird';
+  const a = Q.initialState(), b = Q.initialState(); a.groove = 'straight';
   assert.notDeepEqual(Q.positions(a.groove), Q.positions(b.groove));
   for (let t = 0; t < 16; t++) assert.deepEqual(Q.eventsAt(a, t).drums, Q.eventsAt(b, t).drums);
 });

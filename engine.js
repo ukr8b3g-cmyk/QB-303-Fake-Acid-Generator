@@ -48,12 +48,13 @@
   }
   function initialState() {
     return {
-      version: 1, bpm: 128, volume: 0.42, waveform: 'sawtooth', groove: 'straight', preset: 'four',
+      version: 1, bpm: 128, volume: 0.42, waveform: 'sawtooth', groove: 'weird', preset: 'weird',
       knobs: { ...DEFAULT_KNOBS }, seed: 303, lights: true,
-      metal: false, enabled: { bass: true, kick: true, hat: true, clap: true, metal: true },
-      hook: { enabled: true, variation: 0 }, arrangement: 'off', vox: { enabled: true, level: 0.35 },
+      metal: true, enabled: { bass: true, kick: true, hat: true, clap: true, metal: true },
+      hook: { enabled: true, variation: 0 }, arrangement: 'arcade', vox: { enabled: true, level: 1 },
+      manual: { bass: false, bassPattern: false, drums: { kick: false, hat: false, clap: false }, knobs: Object.fromEntries(Object.keys(DEFAULT_KNOBS).map(key => [key, false])) },
       bass: [36, 36, 43, 39, 36, 46, 43, 39].map((note, i) => ({ note, on: i !== 3, accent: i === 0 || i === 5, slide: i === 1 || i === 6 })),
-      drums: drumPattern()
+      drums: drumPattern('weird')
     };
   }
   function normalize(raw) {
@@ -70,10 +71,14 @@
     if (typeof raw.metal === 'boolean') s.metal = raw.metal;
     if (typeof raw.hook?.enabled === 'boolean') s.hook.enabled = raw.hook.enabled;
     s.hook.variation = Math.round(number(raw.hook?.variation, s.hook.variation, 0, HOOK_PATTERN_COUNT - 1));
-    s.arrangement = ARRANGEMENTS.includes(raw.arrangement) ? raw.arrangement : 'off';
+    s.arrangement = ARRANGEMENTS.includes(raw.arrangement) ? raw.arrangement : s.arrangement;
     if (typeof raw.vox?.enabled === 'boolean') s.vox.enabled = raw.vox.enabled;
     s.vox.level = number(raw.vox?.level, s.vox.level, 0, 1);
     for (const key of Object.keys(s.knobs)) s.knobs[key] = number(raw.knobs?.[key], s.knobs[key], 0, 1);
+    if (typeof raw.manual?.bass === 'boolean') s.manual.bass = raw.manual.bass;
+    if (typeof raw.manual?.bassPattern === 'boolean') s.manual.bassPattern = raw.manual.bassPattern;
+    for (const track of TRACKS) if (typeof raw.manual?.drums?.[track] === 'boolean') s.manual.drums[track] = raw.manual.drums[track];
+    for (const key of Object.keys(s.knobs)) if (typeof raw.manual?.knobs?.[key] === 'boolean') s.manual.knobs[key] = raw.manual.knobs[key];
     for (const key of Object.keys(s.enabled)) if (typeof raw.enabled?.[key] === 'boolean') s.enabled[key] = raw.enabled[key];
     if (Array.isArray(raw.bass) && raw.bass.length === 8) s.bass = raw.bass.map((v, i) => ({
       note: Math.round(number(v?.note, s.bass[i].note, 24, 72)),
@@ -216,6 +221,14 @@
     const phraseBar = (bar - 1) % 20;
     return (phraseBar >= 4 && phraseBar < 6) || (phraseBar >= 10 && phraseBar < 12) || phraseBar >= 16;
   }
+  function performanceEnabled(state, seed, phase, bar, autoMode) {
+    const enabled = { ...state.enabled };
+    if (!autoMode) return enabled;
+    const mask = autoTrackMask(seed, phase);
+    for (const track of TRACKS) enabled[track] = state.enabled[track] && (state.manual?.drums?.[track] === true || mask[track]);
+    if (state.manual?.bass !== true && autoBassRest(bar, true)) enabled.bass = false;
+    return enabled;
+  }
   function bassRandomizerPlan(bar, startBar) {
     const elapsed = bar - startBar;
     return { refresh: elapsed > 0 && elapsed % 4 === 0 };
@@ -228,6 +241,11 @@
     const depths = { cutoff: 0.08, resonance: 0.04, bite: 0.05, slide: 0.07, drive: 0.025 };
     return Object.fromEntries(Object.keys(DEFAULT_KNOBS).map(key => [key,
       clamp(base[key] + Math.sin(tick * 2 * Math.PI / rates[key] + rng() * 2 * Math.PI) * depths[key] * motion)]));
+  }
+  function performanceKnobs(base, tick, seed, amount, autoMode, manual = {}) {
+    const knobs = autoMode ? autoKnobs(base, tick, seed, amount) : { ...base };
+    for (const key of Object.keys(DEFAULT_KNOBS)) if (manual[key] === true) knobs[key] = base[key];
+    return knobs;
   }
   function jamEvent(state, tick, plan) {
     const event = eventsAt(state, tick);
@@ -636,7 +654,7 @@
       return new Blob([encodeWav(channels, sr)], { type: 'audio/wav' });
     } finally { engine.dispose(); }
   }
-  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, PAD_VOICES, PAD_SFX, makePadSound, performanceBpm, autoTrackMask, autoBassRest, bassRandomizerPlan, autoKnobs, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
+  const api = { clamp, clone, random, TRACKS, GROOVES, PRESETS, DEFAULT_KNOBS, HOOK_PATTERN_COUNT, ARRANGEMENTS, JAM_MOVES, PAD_VOICES, PAD_SFX, makePadSound, performanceBpm, autoTrackMask, autoBassRest, performanceEnabled, bassRandomizerPlan, autoKnobs, performanceKnobs, jamPlan, jamEvent, initialState, normalize, drumPattern, newRiff, positions, eventsAt, noteName, Engine, encodeWav, renderWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.QB = api;
 })(typeof window !== 'undefined' ? window : globalThis);
